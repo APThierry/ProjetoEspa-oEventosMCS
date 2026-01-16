@@ -33,7 +33,8 @@ import {
   Eye,
   Edit,
   Trash2,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -90,9 +91,45 @@ export default function EventosPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingEvent, setEditingEvent] = useState<Event | null>(null)
 
+  // ✅ NOVO: Estado para permissões
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [loadingPermissions, setLoadingPermissions] = useState(true)
+
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+
+  // ✅ NOVO: Verificar permissões baseado na role
+  const canCreate = userRole === 'ADMIN' || userRole === 'EDITOR'
+  const canEdit = userRole === 'ADMIN' || userRole === 'EDITOR'
+  const canDelete = userRole === 'ADMIN' || userRole === 'EDITOR'
+  const isViewer = userRole === 'VISUALIZADOR'
+
+  // ✅ NOVO: Carregar permissões do usuário
+  useEffect(() => {
+    const loadUserPermissions = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('user_id', user.id)
+            .single()
+          
+          setUserRole(profile?.role || 'VISUALIZADOR')
+        }
+      } catch (error) {
+        console.error('Erro ao carregar permissões:', error)
+        setUserRole('VISUALIZADOR') // Default seguro
+      } finally {
+        setLoadingPermissions(false)
+      }
+    }
+    
+    loadUserPermissions()
+  }, [supabase])
 
   const loadEvents = async () => {
     setLoading(true)
@@ -123,6 +160,16 @@ export default function EventosPage() {
   const handleDelete = async () => {
     if (!deleteId) return
 
+    // ✅ NOVO: Verificação de segurança
+    if (!canDelete) {
+      toast({
+        title: 'Acesso negado',
+        description: 'Você não tem permissão para excluir eventos.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setDeleting(true)
     try {
       const { error } = await supabase
@@ -148,6 +195,32 @@ export default function EventosPage() {
       setDeleting(false)
       setDeleteId(null)
     }
+  }
+
+  // ✅ NOVO: Handler para editar com verificação
+  const handleEdit = (event: Event) => {
+    if (!canEdit) {
+      toast({
+        title: 'Acesso negado',
+        description: 'Você não tem permissão para editar eventos.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setEditingEvent(event)
+  }
+
+  // ✅ NOVO: Handler para criar com verificação
+  const handleCreate = () => {
+    if (!canCreate) {
+      toast({
+        title: 'Acesso negado',
+        description: 'Você não tem permissão para criar eventos.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setShowCreateModal(true)
   }
 
   const filteredEvents = events.filter(event => {
@@ -181,6 +254,15 @@ export default function EventosPage() {
     return <Badge className="bg-red-100 text-red-800"><FileText className="h-3 w-3 mr-1" />Pendente</Badge>
   }
 
+  // ✅ NOVO: Loading enquanto verifica permissões
+  if (loadingPermissions) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -188,14 +270,33 @@ export default function EventosPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Eventos</h1>
           <p className="text-gray-500">
-            Gerencie todos os eventos do calendário
+            {isViewer 
+              ? 'Visualize todos os eventos do calendário'
+              : 'Gerencie todos os eventos do calendário'
+            }
           </p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Evento
-        </Button>
+        
+        {/* ✅ NOVO: Botão só aparece se pode criar */}
+        {canCreate && (
+          <Button onClick={handleCreate}>
+            <Plus className="h-4 w-4 mr-2" />
+            Novo Evento
+          </Button>
+        )}
       </div>
+
+      {/* ✅ NOVO: Aviso para visualizadores */}
+      {isViewer && (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="flex items-center gap-3 py-4">
+            <AlertTriangle className="h-5 w-5 text-yellow-600 shrink-0" />
+            <p className="text-yellow-800 text-sm">
+              Você está no modo visualização. Apenas administradores e editores podem criar, editar ou excluir eventos.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filtros */}
       <Card>
@@ -258,6 +359,16 @@ export default function EventosPage() {
             <div className="text-center py-8 text-gray-500">
               <Calendar className="h-12 w-12 mx-auto mb-3 opacity-20" />
               <p>Nenhum evento encontrado</p>
+              {canCreate && (
+                <Button 
+                  variant="outline" 
+                  className="mt-4"
+                  onClick={handleCreate}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Criar primeiro evento
+                </Button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -269,7 +380,10 @@ export default function EventosPage() {
                     <TableHead>Tipo</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Pagamento</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    {/* ✅ NOVO: Coluna de ações só aparece se pode editar ou excluir */}
+                    {(canEdit || canDelete) && (
+                      <TableHead className="text-right">Ações</TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -288,25 +402,35 @@ export default function EventosPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>{getPaymentBadge(event)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setEditingEvent(event)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteId(event.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      
+                      {/* ✅ NOVO: Células de ação condicionais */}
+                      {(canEdit || canDelete) && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            {canEdit && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleEdit(event)}
+                                title="Editar evento"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setDeleteId(event.id)}
+                                className="text-red-600 hover:text-red-700"
+                                title="Excluir evento"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -316,64 +440,68 @@ export default function EventosPage() {
         </CardContent>
       </Card>
 
-      {/* Modal de Criar/Editar */}
-      <Dialog 
-        open={showCreateModal || !!editingEvent} 
-        onOpenChange={(open) => {
-          if (!open) {
-            setShowCreateModal(false)
-            setEditingEvent(null)
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingEvent ? 'Editar Evento' : 'Novo Evento'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingEvent 
-                ? 'Faça as alterações necessárias no evento.'
-                : 'Preencha os dados para criar um novo evento.'}
-            </DialogDescription>
-          </DialogHeader>
-          <EventForm
-            date={editingEvent ? new Date(editingEvent.event_date) : new Date()}
-            event={editingEvent}
-            onCancel={() => {
+      {/* Modal de Criar/Editar - só renderiza se pode criar/editar */}
+      {(canCreate || canEdit) && (
+        <Dialog 
+          open={showCreateModal || !!editingEvent} 
+          onOpenChange={(open) => {
+            if (!open) {
               setShowCreateModal(false)
               setEditingEvent(null)
-            }}
-            onSuccess={() => {
-              setShowCreateModal(false)
-              setEditingEvent(null)
-              loadEvents()
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editingEvent ? 'Editar Evento' : 'Novo Evento'}
+              </DialogTitle>
+              <DialogDescription>
+                {editingEvent 
+                  ? 'Faça as alterações necessárias no evento.'
+                  : 'Preencha os dados para criar um novo evento.'}
+              </DialogDescription>
+            </DialogHeader>
+            <EventForm
+              date={editingEvent ? new Date(editingEvent.event_date) : new Date()}
+              event={editingEvent}
+              onCancel={() => {
+                setShowCreateModal(false)
+                setEditingEvent(null)
+              }}
+              onSuccess={() => {
+                setShowCreateModal(false)
+                setEditingEvent(null)
+                loadEvents()
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {/* Dialog de Confirmação de Exclusão */}
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir evento?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja excluir este evento? Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {deleting ? 'Excluindo...' : 'Excluir'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Dialog de Confirmação de Exclusão - só renderiza se pode excluir */}
+      {canDelete && (
+        <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir evento?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir este evento? Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {deleting ? 'Excluindo...' : 'Excluir'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   )
 }

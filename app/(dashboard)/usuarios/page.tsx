@@ -33,7 +33,8 @@ import {
   UserPlus,
   Mail,
   Lock,
-  User
+  User,
+  AlertTriangle
 } from 'lucide-react'
 import {
   Dialog,
@@ -84,8 +85,40 @@ export default function UsuariosPage() {
     role: 'VISUALIZADOR'
   })
 
+  // ✅ NOVO: Estado para verificar se usuário atual é admin
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null)
+  const [loadingPermission, setLoadingPermission] = useState(true)
+
   const supabase = createClient()
   const { toast } = useToast()
+
+  // ✅ NOVO: Verificar permissão do usuário atual
+  const isAdmin = currentUserRole === 'ADMIN'
+
+  // ✅ NOVO: Carregar role do usuário atual
+  useEffect(() => {
+    const loadCurrentUserRole = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('user_id', user.id)
+            .single()
+          
+          setCurrentUserRole(profile?.role || null)
+        }
+      } catch (error) {
+        console.error('Erro ao carregar permissão:', error)
+      } finally {
+        setLoadingPermission(false)
+      }
+    }
+    
+    loadCurrentUserRole()
+  }, [supabase])
 
   const loadUsers = async () => {
     setLoading(true)
@@ -114,12 +147,31 @@ export default function UsuariosPage() {
   }, [])
 
   const handleEditRole = (user: UserProfile) => {
+    // ✅ NOVO: Verificar se é admin antes de permitir edição
+    if (!isAdmin) {
+      toast({
+        title: 'Acesso negado',
+        description: 'Apenas administradores podem alterar permissões.',
+        variant: 'destructive',
+      })
+      return
+    }
     setEditingUser(user)
     setNewRole(user.role)
   }
 
   const handleSaveRole = async () => {
     if (!editingUser || !newRole) return
+
+    // ✅ NOVO: Verificação adicional de segurança
+    if (!isAdmin) {
+      toast({
+        title: 'Acesso negado',
+        description: 'Apenas administradores podem alterar permissões.',
+        variant: 'destructive',
+      })
+      return
+    }
 
     setSaving(true)
     try {
@@ -149,6 +201,16 @@ export default function UsuariosPage() {
   }
 
   const handleCreateUser = async () => {
+    // ✅ NOVO: Verificação de admin
+    if (!isAdmin) {
+      toast({
+        title: 'Acesso negado',
+        description: 'Apenas administradores podem criar usuários.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     // Validações
     if (!newUser.email || !newUser.password || !newUser.full_name) {
       toast({
@@ -234,6 +296,15 @@ export default function UsuariosPage() {
   const editorCount = users.filter(u => u.role === 'EDITOR').length
   const viewerCount = users.filter(u => u.role === 'VISUALIZADOR').length
 
+  // ✅ NOVO: Loading enquanto verifica permissão
+  if (loadingPermission) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -241,14 +312,33 @@ export default function UsuariosPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Usuários</h1>
           <p className="text-gray-500">
-            Gerencie os usuários e suas permissões
+            {isAdmin 
+              ? 'Gerencie os usuários e suas permissões'
+              : 'Visualize os usuários do sistema'
+            }
           </p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <UserPlus className="h-4 w-4 mr-2" />
-          Novo Usuário
-        </Button>
+        
+        {/* ✅ NOVO: Botão só aparece para ADMIN */}
+        {isAdmin && (
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Novo Usuário
+          </Button>
+        )}
       </div>
+
+      {/* ✅ NOVO: Aviso para não-admins */}
+      {!isAdmin && (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="flex items-center gap-3 py-4">
+            <AlertTriangle className="h-5 w-5 text-yellow-600" />
+            <p className="text-yellow-800">
+              Você está no modo visualização. Apenas administradores podem gerenciar usuários.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cards de Resumo */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -306,14 +396,16 @@ export default function UsuariosPage() {
             <div className="text-center py-8 text-gray-500">
               <Users className="h-12 w-12 mx-auto mb-3 opacity-20" />
               <p>Nenhum usuário encontrado</p>
-              <Button 
-                variant="outline" 
-                className="mt-4"
-                onClick={() => setShowCreateDialog(true)}
-              >
-                <UserPlus className="h-4 w-4 mr-2" />
-                Criar primeiro usuário
-              </Button>
+              {isAdmin && (
+                <Button 
+                  variant="outline" 
+                  className="mt-4"
+                  onClick={() => setShowCreateDialog(true)}
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Criar primeiro usuário
+                </Button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -325,7 +417,8 @@ export default function UsuariosPage() {
                     <TableHead>Alertas</TableHead>
                     <TableHead>Relatórios</TableHead>
                     <TableHead>Cadastro</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    {/* ✅ NOVO: Coluna de ações só para admin */}
+                    {isAdmin && <TableHead className="text-right">Ações</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -364,15 +457,19 @@ export default function UsuariosPage() {
                       <TableCell className="text-gray-500">
                         {formatDate(user.created_at)}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditRole(user)}
-                        >
-                          <UserCog className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+                      {/* ✅ NOVO: Botão de ação só para admin */}
+                      {isAdmin && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditRole(user)}
+                            title="Alterar permissão"
+                          >
+                            <UserCog className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -382,243 +479,247 @@ export default function UsuariosPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog de Criar Usuário */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              Criar Novo Usuário
-            </DialogTitle>
-            <DialogDescription>
-              Preencha os dados para criar um novo usuário no sistema
-            </DialogDescription>
-          </DialogHeader>
+      {/* Dialog de Criar Usuário - só abre se for admin */}
+      {isAdmin && (
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Criar Novo Usuário
+              </DialogTitle>
+              <DialogDescription>
+                Preencha os dados para criar um novo usuário no sistema
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {/* Nome */}
-            <div className="space-y-2">
-              <Label htmlFor="full_name">Nome Completo *</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="full_name"
-                  placeholder="Nome do usuário"
-                  className="pl-10"
-                  value={newUser.full_name}
-                  onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
+            <div className="space-y-4 py-4">
+              {/* Nome */}
+              <div className="space-y-2">
+                <Label htmlFor="full_name">Nome Completo *</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="full_name"
+                    placeholder="Nome do usuário"
+                    className="pl-10"
+                    value={newUser.full_name}
+                    onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
+                    disabled={creating}
+                  />
+                </div>
+              </div>
+
+              {/* Email */}
+              <div className="space-y-2">
+                <Label htmlFor="email">E-mail *</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="email@exemplo.com"
+                    className="pl-10"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                    disabled={creating}
+                  />
+                </div>
+              </div>
+
+              {/* Senha */}
+              <div className="space-y-2">
+                <Label htmlFor="password">Senha *</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Mínimo 6 caracteres"
+                    className="pl-10"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                    disabled={creating}
+                  />
+                </div>
+              </div>
+
+              {/* Permissão */}
+              <div className="space-y-2">
+                <Label>Permissão</Label>
+                <Select 
+                  value={newUser.role} 
+                  onValueChange={(value) => setNewUser({ ...newUser, role: value })}
                   disabled={creating}
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="VISUALIZADOR">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-gray-600" />
+                        Visualizador
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="EDITOR">
+                      <div className="flex items-center gap-2">
+                        <Edit className="h-4 w-4 text-blue-600" />
+                        Editor
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="ADMIN">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-red-600" />
+                        Administrador
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Info de permissões */}
+              <div className="bg-gray-50 p-3 rounded-lg text-sm">
+                <p className="font-medium mb-2">Permissões de {ROLE_LABELS[newUser.role]}:</p>
+                <ul className="space-y-1 text-gray-600">
+                  {newUser.role === 'ADMIN' && (
+                    <>
+                      <li>• Controle total do sistema</li>
+                      <li>• Gerenciar usuários e configurações</li>
+                      <li>• Criar, editar e excluir eventos</li>
+                    </>
+                  )}
+                  {newUser.role === 'EDITOR' && (
+                    <>
+                      <li>• Criar, editar e excluir eventos</li>
+                      <li>• Visualizar relatórios</li>
+                      <li>• Não pode gerenciar usuários</li>
+                    </>
+                  )}
+                  {newUser.role === 'VISUALIZADOR' && (
+                    <>
+                      <li>• Apenas visualizar o calendário</li>
+                      <li>• Ver detalhes dos eventos</li>
+                      <li>• Não pode editar nada</li>
+                    </>
+                  )}
+                </ul>
               </div>
             </div>
 
-            {/* Email */}
-            <div className="space-y-2">
-              <Label htmlFor="email">E-mail *</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="email@exemplo.com"
-                  className="pl-10"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  disabled={creating}
-                />
-              </div>
-            </div>
-
-            {/* Senha */}
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha *</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Mínimo 6 caracteres"
-                  className="pl-10"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  disabled={creating}
-                />
-              </div>
-            </div>
-
-            {/* Permissão */}
-            <div className="space-y-2">
-              <Label>Permissão</Label>
-              <Select 
-                value={newUser.role} 
-                onValueChange={(value) => setNewUser({ ...newUser, role: value })}
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowCreateDialog(false)} 
                 disabled={creating}
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="VISUALIZADOR">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-gray-600" />
-                      Visualizador
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="EDITOR">
-                    <div className="flex items-center gap-2">
-                      <Edit className="h-4 w-4 text-blue-600" />
-                      Editor
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="ADMIN">
-                    <div className="flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-red-600" />
-                      Administrador
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateUser} disabled={creating}>
+                {creating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Criando...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Criar Usuário
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialog de Editar Permissão - só funciona para admin */}
+      {isAdmin && (
+        <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Alterar Permissão</DialogTitle>
+              <DialogDescription>
+                Altere a permissão de {editingUser?.full_name}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Permissão</Label>
+                <Select value={newRole} onValueChange={setNewRole}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ADMIN">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-red-600" />
+                        Administrador
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="EDITOR">
+                      <div className="flex items-center gap-2">
+                        <Edit className="h-4 w-4 text-blue-600" />
+                        Editor
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="VISUALIZADOR">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-gray-600" />
+                        Visualizador
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="bg-gray-50 p-3 rounded-lg text-sm">
+                <p className="font-medium mb-2">Permissões:</p>
+                <ul className="space-y-1 text-gray-600">
+                  {newRole === 'ADMIN' && (
+                    <>
+                      <li>• Controle total do sistema</li>
+                      <li>• Gerenciar usuários e configurações</li>
+                      <li>• Criar, editar e excluir eventos</li>
+                    </>
+                  )}
+                  {newRole === 'EDITOR' && (
+                    <>
+                      <li>• Criar, editar e excluir eventos</li>
+                      <li>• Visualizar relatórios</li>
+                      <li>• Não pode gerenciar usuários</li>
+                    </>
+                  )}
+                  {newRole === 'VISUALIZADOR' && (
+                    <>
+                      <li>• Apenas visualizar o calendário</li>
+                      <li>• Ver detalhes dos eventos</li>
+                      <li>• Não pode editar nada</li>
+                    </>
+                  )}
+                </ul>
+              </div>
             </div>
 
-            {/* Info de permissões */}
-            <div className="bg-gray-50 p-3 rounded-lg text-sm">
-              <p className="font-medium mb-2">Permissões de {ROLE_LABELS[newUser.role]}:</p>
-              <ul className="space-y-1 text-gray-600">
-                {newUser.role === 'ADMIN' && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingUser(null)} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveRole} disabled={saving}>
+                {saving ? (
                   <>
-                    <li>• Controle total do sistema</li>
-                    <li>• Gerenciar usuários e configurações</li>
-                    <li>• Criar, editar e excluir eventos</li>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Salvando...
                   </>
+                ) : (
+                  'Salvar'
                 )}
-                {newUser.role === 'EDITOR' && (
-                  <>
-                    <li>• Criar, editar e excluir eventos</li>
-                    <li>• Visualizar relatórios</li>
-                    <li>• Não pode gerenciar usuários</li>
-                  </>
-                )}
-                {newUser.role === 'VISUALIZADOR' && (
-                  <>
-                    <li>• Apenas visualizar o calendário</li>
-                    <li>• Ver detalhes dos eventos</li>
-                    <li>• Não pode editar nada</li>
-                  </>
-                )}
-              </ul>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setShowCreateDialog(false)} 
-              disabled={creating}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleCreateUser} disabled={creating}>
-              {creating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Criando...
-                </>
-              ) : (
-                <>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Criar Usuário
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog de Editar Permissão */}
-      <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Alterar Permissão</DialogTitle>
-            <DialogDescription>
-              Altere a permissão de {editingUser?.full_name}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Permissão</Label>
-              <Select value={newRole} onValueChange={setNewRole}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ADMIN">
-                    <div className="flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-red-600" />
-                      Administrador
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="EDITOR">
-                    <div className="flex items-center gap-2">
-                      <Edit className="h-4 w-4 text-blue-600" />
-                      Editor
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="VISUALIZADOR">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-gray-600" />
-                      Visualizador
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="bg-gray-50 p-3 rounded-lg text-sm">
-              <p className="font-medium mb-2">Permissões:</p>
-              <ul className="space-y-1 text-gray-600">
-                {newRole === 'ADMIN' && (
-                  <>
-                    <li>• Controle total do sistema</li>
-                    <li>• Gerenciar usuários e configurações</li>
-                    <li>• Criar, editar e excluir eventos</li>
-                  </>
-                )}
-                {newRole === 'EDITOR' && (
-                  <>
-                    <li>• Criar, editar e excluir eventos</li>
-                    <li>• Visualizar relatórios</li>
-                    <li>• Não pode gerenciar usuários</li>
-                  </>
-                )}
-                {newRole === 'VISUALIZADOR' && (
-                  <>
-                    <li>• Apenas visualizar o calendário</li>
-                    <li>• Ver detalhes dos eventos</li>
-                    <li>• Não pode editar nada</li>
-                  </>
-                )}
-              </ul>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingUser(null)} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveRole} disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                'Salvar'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
