@@ -8,7 +8,8 @@ import {
   BarChart3, 
   Users, 
   Settings,
-  LayoutDashboard
+  LayoutDashboard,
+  Receipt
 } from 'lucide-react'
 
 interface UserProfile {
@@ -25,6 +26,7 @@ interface SidebarProps {
 const navigation = [
   { name: 'Calendário', href: '/', icon: LayoutDashboard },
   { name: 'Eventos', href: '/eventos', icon: CalendarDays },
+  { name: 'Despesas', href: '/despesas', icon: Receipt, roles: ['ADMIN', 'EDITOR'] },
   { name: 'Relatórios', href: '/relatorios', icon: BarChart3, roles: ['ADMIN', 'EDITOR'] },
   { name: 'Usuários', href: '/usuarios', icon: Users, roles: ['ADMIN'] },
   { name: 'Configurações', href: '/configuracoes', icon: Settings, roles: ['ADMIN'] },
@@ -64,7 +66,7 @@ export function Sidebar({ profile }: SidebarProps) {
           </div>
           <div>
             <h1 className="font-bold text-lg">Calendário</h1>
-            <p className="text-xs text-gray-500">Marketing</p>
+            <p className="text-xs text-gray-500">Gestão de Eventos</p>
           </div>
         </div>
 

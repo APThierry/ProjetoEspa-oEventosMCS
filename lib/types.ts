@@ -1,10 +1,49 @@
+// lib/types.ts
+
 // ===========================================
-// TIPOS SIMPLES (sem dependência de ENUMs complexos)
+// TIPOS ATUALIZADOS v2.0
 // ===========================================
 
 export type UserRole = 'ADMIN' | 'EDITOR' | 'VISUALIZADOR'
-export type EventType = 'MARKETING' | 'FUNDO_CONTRATO'
+
+// ✅ ATUALIZADO: Novos tipos de evento
+export type EventType = 'CEV_502' | 'FPP_501'
+
+// ✅ NOVO: Categoria de evento
+export type EventCategory = 
+  | 'STAND_UP'
+  | 'TEATRAL'
+  | 'MUSICAL'
+  | 'FORMATURA'
+  | 'EMPRESARIAL'
+  | 'FEIRAS'
+  | 'CONGRESSO'
+  | 'OUTROS'
+
 export type ReservationStatus = 'SEM_RESERVA' | 'PRE_RESERVA' | 'RESERVA_CONFIRMADA'
+
+// ✅ NOVO: Status de pagamento
+export type PaymentStatus = 'PAGO' | 'NAO_PAGO'
+
+// ✅ NOVO: Categoria de despesa
+export type ExpenseCategory =
+  | 'ALUGUEL'
+  | 'ENERGIA'
+  | 'AGUA'
+  | 'INTERNET'
+  | 'TELEFONE'
+  | 'MANUTENCAO'
+  | 'LIMPEZA'
+  | 'SEGURANCA'
+  | 'MARKETING'
+  | 'PESSOAL'
+  | 'EQUIPAMENTOS'
+  | 'ALIMENTACAO'
+  | 'TRANSPORTE'
+  | 'IMPOSTOS'
+  | 'SEGUROS'
+  | 'OUTROS'
+
 export type AlertType = 'VENCIMENTO_10_DIAS' | 'VENCIMENTO_EXPIRADO' | 'LEMBRETE_EVENTO'
 export type AlertStatus = 'PENDING' | 'SENT' | 'FAILED'
 export type ReportType = 'MENSAL' | 'TRIMESTRAL' | 'ANUAL'
@@ -26,20 +65,79 @@ export interface UserProfile {
   updated_at: string
 }
 
+// ✅ ATUALIZADO: Interface de Evento
 export interface Event {
   id: string
   name: string
   event_date: string
-  event_type: string
-  reservation_status: string
+  event_type: EventType
+  event_category: EventCategory  // ✅ NOVO
+  reservation_status: ReservationStatus
   has_contract: boolean
-  is_paid: boolean
-  contract_due_date: string | null
+  estimated_audience: number | null  // ✅ NOVO
   observations: string | null
   color_override: string | null
   created_by: string | null
   created_at: string
   updated_at: string
+  // Relacionamentos (quando carregados)
+  installments?: ContractInstallment[]
+}
+
+// ✅ NOVO: Interface de Parcela
+export interface ContractInstallment {
+  id: string
+  event_id: string
+  installment_number: number
+  amount: number
+  due_date: string
+  payment_status: PaymentStatus
+  paid_at: string | null
+  payment_method: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ✅ NOVO: Interface de Despesa
+export interface Expense {
+  id: string
+  description: string
+  category: ExpenseCategory
+  amount: number
+  expense_date: string
+  event_id: string | null
+  is_recurring: boolean
+  recurrence_type: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // Relacionamento (quando carregado)
+  event?: Event
+}
+
+// ✅ NOVO: Interface para formulário de parcela
+export interface InstallmentFormData {
+  id?: string
+  installment_number: number
+  amount: number
+  due_date: string
+  payment_status: PaymentStatus
+  notes?: string
+}
+
+// ✅ NOVO: Interface para formulário de evento
+export interface EventFormData {
+  name: string
+  event_date: string
+  event_type: EventType
+  event_category: EventCategory
+  reservation_status: ReservationStatus
+  has_contract: boolean
+  estimated_audience: number | null
+  observations: string | null
+  installments: InstallmentFormData[]
 }
 
 export interface Holiday {
@@ -94,4 +192,24 @@ export const DEFAULT_COLORS: ColorScheme = {
   reserva_paga: '#3B82F6',
   pre_reserva: '#9CA3AF',
   sem_reserva: '#F3F4F6',
+}
+
+// ===========================================
+// RESUMOS FINANCEIROS
+// ===========================================
+
+export interface FinancialSummary {
+  totalRevenue: number
+  totalExpenses: number
+  netResult: number
+  eventsCount: number
+  paidInstallmentsCount: number
+  pendingInstallmentsCount: number
+}
+
+export interface CategorySummary {
+  category: EventCategory
+  count: number
+  totalRevenue: number
+  percentage: number
 }
