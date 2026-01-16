@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -27,7 +29,11 @@ import {
   Shield, 
   Edit, 
   Loader2,
-  UserCog
+  UserCog,
+  UserPlus,
+  Mail,
+  Lock,
+  User
 } from 'lucide-react'
 import {
   Dialog,
@@ -37,7 +43,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
 
 interface UserProfile {
   id: string
@@ -68,6 +73,16 @@ export default function UsuariosPage() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null)
   const [newRole, setNewRole] = useState<string>('')
   const [saving, setSaving] = useState(false)
+  
+  // Estado para criar usuário
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newUser, setNewUser] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    role: 'VISUALIZADOR'
+  })
 
   const supabase = createClient()
   const { toast } = useToast()
@@ -133,6 +148,70 @@ export default function UsuariosPage() {
     }
   }
 
+  const handleCreateUser = async () => {
+    // Validações
+    if (!newUser.email || !newUser.password || !newUser.full_name) {
+      toast({
+        title: 'Erro',
+        description: 'Preencha todos os campos obrigatórios.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (newUser.password.length < 6) {
+      toast({
+        title: 'Erro',
+        description: 'A senha deve ter pelo menos 6 caracteres.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setCreating(true)
+    try {
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newUser),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao criar usuário')
+      }
+
+      toast({
+        title: 'Usuário criado!',
+        description: `${newUser.full_name} foi adicionado como ${ROLE_LABELS[newUser.role]}.`,
+      })
+
+      // Limpar formulário e fechar modal
+      setNewUser({
+        email: '',
+        password: '',
+        full_name: '',
+        role: 'VISUALIZADOR'
+      })
+      setShowCreateDialog(false)
+      
+      // Recarregar lista
+      loadUsers()
+
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao criar usuário',
+        description: error.message || 'Não foi possível criar o usuário.',
+        variant: 'destructive',
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -158,11 +237,17 @@ export default function UsuariosPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Usuários</h1>
-        <p className="text-gray-500">
-          Gerencie os usuários e suas permissões
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Usuários</h1>
+          <p className="text-gray-500">
+            Gerencie os usuários e suas permissões
+          </p>
+        </div>
+        <Button onClick={() => setShowCreateDialog(true)}>
+          <UserPlus className="h-4 w-4 mr-2" />
+          Novo Usuário
+        </Button>
       </div>
 
       {/* Cards de Resumo */}
@@ -221,6 +306,14 @@ export default function UsuariosPage() {
             <div className="text-center py-8 text-gray-500">
               <Users className="h-12 w-12 mx-auto mb-3 opacity-20" />
               <p>Nenhum usuário encontrado</p>
+              <Button 
+                variant="outline" 
+                className="mt-4"
+                onClick={() => setShowCreateDialog(true)}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Criar primeiro usuário
+              </Button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -288,6 +381,158 @@ export default function UsuariosPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de Criar Usuário */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Criar Novo Usuário
+            </DialogTitle>
+            <DialogDescription>
+              Preencha os dados para criar um novo usuário no sistema
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Nome */}
+            <div className="space-y-2">
+              <Label htmlFor="full_name">Nome Completo *</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  id="full_name"
+                  placeholder="Nome do usuário"
+                  className="pl-10"
+                  value={newUser.full_name}
+                  onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
+                  disabled={creating}
+                />
+              </div>
+            </div>
+
+            {/* Email */}
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail *</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="email@exemplo.com"
+                  className="pl-10"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  disabled={creating}
+                />
+              </div>
+            </div>
+
+            {/* Senha */}
+            <div className="space-y-2">
+              <Label htmlFor="password">Senha *</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
+                  className="pl-10"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  disabled={creating}
+                />
+              </div>
+            </div>
+
+            {/* Permissão */}
+            <div className="space-y-2">
+              <Label>Permissão</Label>
+              <Select 
+                value={newUser.role} 
+                onValueChange={(value) => setNewUser({ ...newUser, role: value })}
+                disabled={creating}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="VISUALIZADOR">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-gray-600" />
+                      Visualizador
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="EDITOR">
+                    <div className="flex items-center gap-2">
+                      <Edit className="h-4 w-4 text-blue-600" />
+                      Editor
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="ADMIN">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-red-600" />
+                      Administrador
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Info de permissões */}
+            <div className="bg-gray-50 p-3 rounded-lg text-sm">
+              <p className="font-medium mb-2">Permissões de {ROLE_LABELS[newUser.role]}:</p>
+              <ul className="space-y-1 text-gray-600">
+                {newUser.role === 'ADMIN' && (
+                  <>
+                    <li>• Controle total do sistema</li>
+                    <li>• Gerenciar usuários e configurações</li>
+                    <li>• Criar, editar e excluir eventos</li>
+                  </>
+                )}
+                {newUser.role === 'EDITOR' && (
+                  <>
+                    <li>• Criar, editar e excluir eventos</li>
+                    <li>• Visualizar relatórios</li>
+                    <li>• Não pode gerenciar usuários</li>
+                  </>
+                )}
+                {newUser.role === 'VISUALIZADOR' && (
+                  <>
+                    <li>• Apenas visualizar o calendário</li>
+                    <li>• Ver detalhes dos eventos</li>
+                    <li>• Não pode editar nada</li>
+                  </>
+                )}
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowCreateDialog(false)} 
+              disabled={creating}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateUser} disabled={creating}>
+              {creating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Criando...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Criar Usuário
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de Editar Permissão */}
       <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>

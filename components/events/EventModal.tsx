@@ -12,7 +12,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { EventCard } from './EventCard'
 import { EventForm } from './EventForm'
@@ -102,8 +101,8 @@ export function EventModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
             <span className="capitalize">{formattedDate}</span>
@@ -120,7 +119,8 @@ export function EventModal({
           )}
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        {/* Área com scroll */}
+        <div className="flex-1 overflow-y-auto pr-2 -mr-2">
           {showForm ? (
             <EventForm
               date={selectedDate}
@@ -169,7 +169,7 @@ export function EventModal({
               )}
             </div>
           )}
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   )
