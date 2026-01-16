@@ -40,6 +40,8 @@ interface Stats {
   totalEvents: number
   cevEvents: number
   fppEvents: number
+  cevRevenue: number  // NOVO
+  fppRevenue: number  // NOVO
   withContract: number
   totalRevenue: number
   totalPaid: number
@@ -80,6 +82,8 @@ export default function RelatoriosPage() {
     totalEvents: 0,
     cevEvents: 0,
     fppEvents: 0,
+    cevRevenue: 0,  // NOVO
+    fppRevenue: 0,  // NOVO
     withContract: 0,
     totalRevenue: 0,
     totalPaid: 0,
@@ -173,10 +177,31 @@ export default function RelatoriosPage() {
       const totalPending = totalRevenue - totalPaid
       const totalExpenses = expenseList.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0)
 
+      // Calcular receita por tipo de evento
+      const cevRevenue = eventList
+        .filter(e => e.event_type === 'CEV_502')
+        .reduce((sum, event) => {
+          const eventRevenue = installments
+            .filter(inst => inst.event_id === event.id && inst.payment_status === 'PAGO')
+            .reduce((s, inst) => s + parseFloat(inst.amount || 0), 0)
+          return sum + eventRevenue
+        }, 0)
+
+      const fppRevenue = eventList
+        .filter(e => e.event_type === 'FPP_501')
+        .reduce((sum, event) => {
+          const eventRevenue = installments
+            .filter(inst => inst.event_id === event.id && inst.payment_status === 'PAGO')
+            .reduce((s, inst) => s + parseFloat(inst.amount || 0), 0)
+          return sum + eventRevenue
+        }, 0)
+
       const newStats: Stats = {
         totalEvents: eventList.length,
         cevEvents: eventList.filter(e => e.event_type === 'CEV_502').length,
         fppEvents: eventList.filter(e => e.event_type === 'FPP_501').length,
+        cevRevenue,  // NOVO
+        fppRevenue,  // NOVO
         withContract: eventList.filter(e => e.has_contract).length,
         totalRevenue,
         totalPaid,
@@ -345,7 +370,7 @@ export default function RelatoriosPage() {
         </div>
       ) : (
         <>
-          {/* Cards de Estatísticas Principais */}
+                    {/* Cards de Estatísticas Principais */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -355,7 +380,7 @@ export default function RelatoriosPage() {
                 <Calendar className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{stats.totalEvents}</div>
+                <div className="text-2xl sm:text-3xl font-bold">{stats.totalEvents}</div>
                 <p className="text-xs text-gray-500 mt-1">{getPeriodLabel()}</p>
               </CardContent>
             </Card>
@@ -368,10 +393,10 @@ export default function RelatoriosPage() {
                 <DollarSign className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-green-600">
+                <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600 truncate" title={formatCurrency(stats.totalPaid)}>
                   {formatCurrency(stats.totalPaid)}
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 mt-1 truncate" title={`${formatCurrency(stats.totalPending)} pendente`}>
                   {formatCurrency(stats.totalPending)} pendente
                 </p>
               </CardContent>
@@ -385,7 +410,7 @@ export default function RelatoriosPage() {
                 <Receipt className="h-4 w-4 text-red-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-red-600">
+                <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600 truncate" title={formatCurrency(stats.totalExpenses)}>
                   {formatCurrency(stats.totalExpenses)}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -406,7 +431,7 @@ export default function RelatoriosPage() {
                 )}
               </CardHeader>
               <CardContent>
-                <div className={`text-3xl font-bold ${stats.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`text-xl sm:text-2xl lg:text-3xl font-bold truncate ${stats.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`} title={formatCurrency(stats.netResult)}>
                   {formatCurrency(stats.netResult)}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -416,8 +441,8 @@ export default function RelatoriosPage() {
             </Card>
           </div>
 
-          {/* Cards Secundários */}
-          <div className="grid gap-4 md:grid-cols-4">
+                    {/* Cards Secundários */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-500">
@@ -458,7 +483,7 @@ export default function RelatoriosPage() {
                 <Users className="h-4 w-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
+                <div className="text-2xl font-bold truncate" title={stats.totalAudience.toLocaleString('pt-BR')}>
                   {stats.totalAudience.toLocaleString('pt-BR')}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -475,7 +500,7 @@ export default function RelatoriosPage() {
                 <AlertCircle className="h-4 w-4 text-amber-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-amber-600">
+                <div className="text-xl sm:text-2xl font-bold text-amber-600 truncate" title={formatCurrency(stats.totalPending)}>
                   {formatCurrency(stats.totalPending)}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">a receber</p>
@@ -494,55 +519,77 @@ export default function RelatoriosPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-500" />
-                      <span>CEV – 502</span>
+                <div className="space-y-6">
+                  {/* CEV - 502 */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-blue-500" />
+                        <span className="font-medium">CEV – 502</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold">{stats.cevEvents}</span>
+                        <Badge variant="outline">
+                          {stats.totalEvents > 0 
+                            ? `${((stats.cevEvents / stats.totalEvents) * 100).toFixed(0)}%`
+                            : '0%'}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold">{stats.cevEvents}</span>
-                      <Badge variant="outline">
-                        {stats.totalEvents > 0 
-                          ? `${((stats.cevEvents / stats.totalEvents) * 100).toFixed(0)}%`
-                          : '0%'}
-                      </Badge>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-500 h-2 rounded-full transition-all" 
+                        style={{ 
+                          width: stats.totalEvents > 0 
+                            ? `${(stats.cevEvents / stats.totalEvents) * 100}%` 
+                            : '0%' 
+                        }}
+                      />
                     </div>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-500 h-2 rounded-full transition-all" 
-                      style={{ 
-                        width: stats.totalEvents > 0 
-                          ? `${(stats.cevEvents / stats.totalEvents) * 100}%` 
-                          : '0%' 
-                      }}
-                    />
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Receita:</span>
+                      <span className="font-semibold text-green-600">{formatCurrency(stats.cevRevenue)}</span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between mt-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-purple-500" />
-                      <span>FPP – 501</span>
+                  {/* FPP - 501 */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-purple-500" />
+                        <span className="font-medium">FPP – 501</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold">{stats.fppEvents}</span>
+                        <Badge variant="outline">
+                          {stats.totalEvents > 0 
+                            ? `${((stats.fppEvents / stats.totalEvents) * 100).toFixed(0)}%`
+                            : '0%'}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold">{stats.fppEvents}</span>
-                      <Badge variant="outline">
-                        {stats.totalEvents > 0 
-                          ? `${((stats.fppEvents / stats.totalEvents) * 100).toFixed(0)}%`
-                          : '0%'}
-                      </Badge>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-purple-500 h-2 rounded-full transition-all" 
+                        style={{ 
+                          width: stats.totalEvents > 0 
+                            ? `${(stats.fppEvents / stats.totalEvents) * 100}%` 
+                            : '0%' 
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Receita:</span>
+                      <span className="font-semibold text-green-600">{formatCurrency(stats.fppRevenue)}</span>
                     </div>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-purple-500 h-2 rounded-full transition-all" 
-                      style={{ 
-                        width: stats.totalEvents > 0 
-                          ? `${(stats.fppEvents / stats.totalEvents) * 100}%` 
-                          : '0%' 
-                      }}
-                    />
+
+                  {/* Comparativo */}
+                  <div className="pt-4 border-t">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 font-medium">Total Geral:</span>
+                      <span className="font-bold text-green-600">{formatCurrency(stats.cevRevenue + stats.fppRevenue)}</span>
+                    </div>
                   </div>
                 </div>
               </CardContent>
