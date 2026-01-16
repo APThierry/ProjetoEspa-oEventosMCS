@@ -370,7 +370,7 @@ export default function RelatoriosPage() {
         </div>
       ) : (
         <>
-                    {/* Cards de Estatísticas Principais */}
+          {/* Cards de Estatísticas Principais */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -380,7 +380,7 @@ export default function RelatoriosPage() {
                 <Calendar className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl sm:text-3xl font-bold">{stats.totalEvents}</div>
+                <div className="text-3xl font-bold">{stats.totalEvents}</div>
                 <p className="text-xs text-gray-500 mt-1">{getPeriodLabel()}</p>
               </CardContent>
             </Card>
@@ -393,10 +393,10 @@ export default function RelatoriosPage() {
                 <DollarSign className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600 truncate" title={formatCurrency(stats.totalPaid)}>
+                <div className="text-lg sm:text-xl font-bold text-green-600">
                   {formatCurrency(stats.totalPaid)}
                 </div>
-                <p className="text-xs text-gray-500 mt-1 truncate" title={`${formatCurrency(stats.totalPending)} pendente`}>
+                <p className="text-xs text-gray-500 mt-1">
                   {formatCurrency(stats.totalPending)} pendente
                 </p>
               </CardContent>
@@ -410,7 +410,7 @@ export default function RelatoriosPage() {
                 <Receipt className="h-4 w-4 text-red-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600 truncate" title={formatCurrency(stats.totalExpenses)}>
+                <div className="text-lg sm:text-xl font-bold text-red-600">
                   {formatCurrency(stats.totalExpenses)}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -431,7 +431,7 @@ export default function RelatoriosPage() {
                 )}
               </CardHeader>
               <CardContent>
-                <div className={`text-xl sm:text-2xl lg:text-3xl font-bold truncate ${stats.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`} title={formatCurrency(stats.netResult)}>
+                <div className={`text-lg sm:text-xl font-bold ${stats.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {formatCurrency(stats.netResult)}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -441,7 +441,7 @@ export default function RelatoriosPage() {
             </Card>
           </div>
 
-                    {/* Cards Secundários */}
+          {/* Cards Secundários */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -451,7 +451,7 @@ export default function RelatoriosPage() {
                 <FileText className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats.withContract}</div>
+                <div className="text-3xl font-bold">{stats.withContract}</div>
                 <p className="text-xs text-gray-500 mt-1">
                   {stats.totalEvents > 0 
                     ? `${((stats.withContract / stats.totalEvents) * 100).toFixed(0)}% do total`
@@ -468,7 +468,7 @@ export default function RelatoriosPage() {
                 <DollarSign className="h-4 w-4 text-emerald-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{paymentRate}%</div>
+                <div className="text-3xl font-bold">{paymentRate}%</div>
                 <p className="text-xs text-gray-500 mt-1">
                   do valor contratado
                 </p>
@@ -483,7 +483,7 @@ export default function RelatoriosPage() {
                 <Users className="h-4 w-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold truncate" title={stats.totalAudience.toLocaleString('pt-BR')}>
+                <div className="text-3xl font-bold">
                   {stats.totalAudience.toLocaleString('pt-BR')}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -500,7 +500,7 @@ export default function RelatoriosPage() {
                 <AlertCircle className="h-4 w-4 text-amber-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-xl sm:text-2xl font-bold text-amber-600 truncate" title={formatCurrency(stats.totalPending)}>
+                <div className="text-lg sm:text-xl font-bold text-amber-600">
                   {formatCurrency(stats.totalPending)}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">a receber</p>
