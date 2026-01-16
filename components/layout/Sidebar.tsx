@@ -2,7 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Calendar, CalendarDays, BarChart3, Users, Settings } from 'lucide-react'
+import { 
+  Calendar, 
+  CalendarDays, 
+  BarChart3, 
+  Users, 
+  Settings,
+  LayoutDashboard
+} from 'lucide-react'
 
 interface UserProfile {
   id: string
@@ -16,7 +23,7 @@ interface SidebarProps {
 }
 
 const navigation = [
-  { name: 'Calendário', href: '/', icon: Calendar },
+  { name: 'Calendário', href: '/', icon: LayoutDashboard },
   { name: 'Eventos', href: '/eventos', icon: CalendarDays },
   { name: 'Relatórios', href: '/relatorios', icon: BarChart3, roles: ['ADMIN', 'EDITOR'] },
   { name: 'Usuários', href: '/usuarios', icon: Users, roles: ['ADMIN'] },
@@ -40,6 +47,13 @@ export function Sidebar({ profile }: SidebarProps) {
     }
   }
 
+  const isActive = (href: string) => {
+    if (href === '/') {
+      return pathname === '/' || pathname === '/calendario'
+    }
+    return pathname.startsWith(href)
+  }
+
   return (
     <aside className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col">
       <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-white border-r border-gray-200 px-6 pb-4">
@@ -58,15 +72,14 @@ export function Sidebar({ profile }: SidebarProps) {
         <nav className="flex flex-1 flex-col">
           <ul className="flex flex-1 flex-col gap-y-1">
             {filteredNavigation.map((item) => {
-              const isActive = pathname === item.href || 
-                (item.href !== '/' && pathname.startsWith(item.href))
+              const active = isActive(item.href)
               
               return (
                 <li key={item.name}>
                   <Link
                     href={item.href}
                     className={`group flex gap-x-3 rounded-lg p-3 text-sm font-medium transition-colors ${
-                      isActive
+                      active
                         ? 'bg-blue-600 text-white'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
@@ -82,6 +95,9 @@ export function Sidebar({ profile }: SidebarProps) {
           {/* Info do usuário */}
           <div className="mt-auto pt-4 border-t border-gray-200">
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50">
+              <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
+                {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
                   {profile?.full_name || 'Usuário'}

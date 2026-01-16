@@ -1,9 +1,24 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import { UserProfile, AuthUser } from '@/lib/types'
+
+interface UserProfile {
+  id: string
+  user_id: string
+  full_name: string
+  role: string
+  avatar_url: string | null
+  notification_email: string | null
+  receive_alerts: boolean
+  receive_reports: boolean
+}
+
+interface AuthUser {
+  id: string
+  email: string
+  profile: UserProfile | null
+}
 
 export function useUser() {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -11,13 +26,11 @@ export function useUser() {
   const supabase = createClient()
 
   useEffect(() => {
-    // Buscar usuário atual
     const getUser = async () => {
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser()
         
         if (authUser) {
-          // Buscar perfil
           const { data: profile } = await supabase
             .from('user_profiles')
             .select('*')
@@ -42,7 +55,6 @@ export function useUser() {
 
     getUser()
 
-    // Escutar mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
