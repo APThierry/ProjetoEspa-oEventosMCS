@@ -33,15 +33,17 @@ import {
   CATEGORY_COLORS,
   EXPENSE_CATEGORY_LABELS,
   EXPENSE_CATEGORY_COLORS,
+  RESERVATION_STATUS_COLORS,  // ✅ NOVO: Importar cores dos status
   formatCurrency,
 } from '@/lib/constants'
 
+// ✅ ATUALIZADO: Interface Stats
 interface Stats {
   totalEvents: number
   cevEvents: number
   fppEvents: number
-  cevRevenue: number  // NOVO
-  fppRevenue: number  // NOVO
+  cevRevenue: number
+  fppRevenue: number
   withContract: number
   totalRevenue: number
   totalPaid: number
@@ -49,8 +51,9 @@ interface Stats {
   totalExpenses: number
   netResult: number
   totalAudience: number
-  semReserva: number
+  // ✅ ATUALIZADO: Removido semReserva, adicionado emAndamento
   preReserva: number
+  emAndamento: number
   confirmada: number
 }
 
@@ -78,12 +81,13 @@ export default function RelatoriosPage() {
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('year')
   const [filterType, setFilterType] = useState('all')
+  // ✅ ATUALIZADO: Estado inicial
   const [stats, setStats] = useState<Stats>({
     totalEvents: 0,
     cevEvents: 0,
     fppEvents: 0,
-    cevRevenue: 0,  // NOVO
-    fppRevenue: 0,  // NOVO
+    cevRevenue: 0,
+    fppRevenue: 0,
     withContract: 0,
     totalRevenue: 0,
     totalPaid: 0,
@@ -91,8 +95,8 @@ export default function RelatoriosPage() {
     totalExpenses: 0,
     netResult: 0,
     totalAudience: 0,
-    semReserva: 0,
     preReserva: 0,
+    emAndamento: 0,  // ✅ NOVO
     confirmada: 0
   })
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
@@ -196,12 +200,13 @@ export default function RelatoriosPage() {
           return sum + eventRevenue
         }, 0)
 
+      // ✅ ATUALIZADO: Cálculo das estatísticas
       const newStats: Stats = {
         totalEvents: eventList.length,
         cevEvents: eventList.filter(e => e.event_type === 'CEV_502').length,
         fppEvents: eventList.filter(e => e.event_type === 'FPP_501').length,
-        cevRevenue,  // NOVO
-        fppRevenue,  // NOVO
+        cevRevenue,
+        fppRevenue,
         withContract: eventList.filter(e => e.has_contract).length,
         totalRevenue,
         totalPaid,
@@ -209,8 +214,9 @@ export default function RelatoriosPage() {
         totalExpenses,
         netResult: totalPaid - totalExpenses,
         totalAudience: eventList.reduce((sum, e) => sum + (e.estimated_audience || 0), 0),
-        semReserva: eventList.filter(e => e.reservation_status === 'SEM_RESERVA').length,
+        // ✅ ATUALIZADO: Novos filtros de status
         preReserva: eventList.filter(e => e.reservation_status === 'PRE_RESERVA').length,
+        emAndamento: eventList.filter(e => e.reservation_status === 'RESERVA_EM_ANDAMENTO').length,
         confirmada: eventList.filter(e => e.reservation_status === 'RESERVA_CONFIRMADA').length
       }
       setStats(newStats)
@@ -222,7 +228,6 @@ export default function RelatoriosPage() {
         const cat = event.event_category || 'OUTROS'
         const current = categoryMap.get(cat) || { count: 0, revenue: 0 }
         
-        // Somar receita das parcelas pagas deste evento
         const eventRevenue = installments
           .filter(inst => inst.event_id === event.id && inst.payment_status === 'PAGO')
           .reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0)
@@ -595,34 +600,85 @@ export default function RelatoriosPage() {
               </CardContent>
             </Card>
 
-            {/* Por Status de Reserva */}
+            {/* ✅ ATUALIZADO: Por Status de Reserva */}
             <Card>
               <CardHeader>
                 <CardTitle>Por Status de Reserva</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
+                  {/* Confirmadas */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500" />
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: RESERVATION_STATUS_COLORS.RESERVA_CONFIRMADA }}
+                      />
                       <span>Confirmadas</span>
                     </div>
                     <span className="font-bold">{stats.confirmada}</span>
                   </div>
+                  
+                  {/* ✅ NOVO: Em Andamento */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: RESERVATION_STATUS_COLORS.RESERVA_EM_ANDAMENTO }}
+                      />
+                      <span>Em Andamento</span>
+                    </div>
+                    <span className="font-bold">{stats.emAndamento}</span>
+                  </div>
+                  
+                  {/* Pré-Reserva */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: RESERVATION_STATUS_COLORS.PRE_RESERVA }}
+                      />
                       <span>Pré-Reserva</span>
                     </div>
                     <span className="font-bold">{stats.preReserva}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-gray-400" />
-                      <span>Sem Reserva</span>
-                    </div>
-                    <span className="font-bold">{stats.semReserva}</span>
+                </div>
+
+                {/* ✅ NOVO: Barra de progresso visual */}
+                <div className="mt-6 space-y-2">
+                  <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
+                    {stats.totalEvents > 0 && (
+                      <>
+                        <div 
+                          className="transition-all"
+                          style={{ 
+                            width: `${(stats.confirmada / stats.totalEvents) * 100}%`,
+                            backgroundColor: RESERVATION_STATUS_COLORS.RESERVA_CONFIRMADA
+                          }}
+                          title={`Confirmadas: ${stats.confirmada}`}
+                        />
+                        <div 
+                          className="transition-all"
+                          style={{ 
+                            width: `${(stats.emAndamento / stats.totalEvents) * 100}%`,
+                            backgroundColor: RESERVATION_STATUS_COLORS.RESERVA_EM_ANDAMENTO
+                          }}
+                          title={`Em Andamento: ${stats.emAndamento}`}
+                        />
+                        <div 
+                          className="transition-all"
+                          style={{ 
+                            width: `${(stats.preReserva / stats.totalEvents) * 100}%`,
+                            backgroundColor: RESERVATION_STATUS_COLORS.PRE_RESERVA
+                          }}
+                          title={`Pré-Reserva: ${stats.preReserva}`}
+                        />
+                      </>
+                    )}
                   </div>
+                  <p className="text-xs text-gray-500 text-center">
+                    Distribuição dos {stats.totalEvents} eventos
+                  </p>
                 </div>
 
                 {monthlyData.length > 0 && (

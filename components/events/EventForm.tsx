@@ -69,7 +69,8 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
   const [hasContract, setHasContract] = useState(event?.has_contract ?? false)
   const [eventType, setEventType] = useState(event?.event_type ?? 'CEV_502')
   const [eventCategory, setEventCategory] = useState(event?.event_category ?? 'OUTROS')
-  const [reservationStatus, setReservationStatus] = useState(event?.reservation_status ?? 'SEM_RESERVA')
+  // ✅ ATUALIZADO: Default agora é PRE_RESERVA
+  const [reservationStatus, setReservationStatus] = useState(event?.reservation_status ?? 'PRE_RESERVA')
   const [estimatedAudience, setEstimatedAudience] = useState<string>(
     event?.estimated_audience?.toString() ?? ''
   )
@@ -91,7 +92,8 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
       event_date: event?.event_date ?? format(date, 'yyyy-MM-dd'),
       event_type: event?.event_type ?? 'CEV_502',
       event_category: event?.event_category ?? 'OUTROS',
-      reservation_status: event?.reservation_status ?? 'SEM_RESERVA',
+      // ✅ ATUALIZADO: Default agora é PRE_RESERVA
+      reservation_status: event?.reservation_status ?? 'PRE_RESERVA',
       has_contract: event?.has_contract ?? false,
       estimated_audience: event?.estimated_audience ?? null,
       observations: event?.observations ?? '',
@@ -123,7 +125,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
             notes: inst.notes,
           })))
         } else if (event.has_contract) {
-          // Se tem contrato mas não tem parcelas, criar uma padrão
           setInstallments([{
             installment_number: 1,
             amount: 0,
@@ -143,7 +144,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
     }
   }, [event?.id, event?.has_contract, supabase])
 
-  // Quando ativa contrato, criar parcela padrão se não existir
   useEffect(() => {
     if (hasContract && installments.length === 0) {
       setInstallments([{
@@ -159,7 +159,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
     setLoading(true)
 
     try {
-      // Validar público estimado
       const audience = estimatedAudience ? parseInt(estimatedAudience, 10) : null
       if (estimatedAudience && (isNaN(audience!) || audience! < 0)) {
         toast({
@@ -171,7 +170,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
         return
       }
 
-      // Validar parcelas se tem contrato
       if (hasContract) {
         const invalidInstallments = installments.filter(
           inst => !inst.due_date || inst.amount < 0
@@ -187,7 +185,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
         }
       }
 
-      // Payload do evento
       const eventPayload = {
         name: data.name,
         event_date: data.event_date,
@@ -203,14 +200,12 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
       let error = null
 
       if (isEditing && event) {
-        // Atualizar evento existente
         const result = await supabase
           .from('events')
           .update(eventPayload)
           .eq('id', event.id)
         error = result.error
       } else {
-        // Criar novo evento
         const result = await supabase
           .from('events')
           .insert([eventPayload])
@@ -225,11 +220,9 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
         throw new Error(error.message)
       }
 
-      // Salvar parcelas se tem contrato
       if (hasContract && eventId) {
         await saveInstallments(eventId)
       } else if (!hasContract && eventId && isEditing) {
-        // Se removeu contrato, deletar parcelas
         await supabase
           .from('contract_installments')
           .delete()
@@ -259,13 +252,11 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
 
   const saveInstallments = async (eventId: string) => {
     try {
-      // Deletar parcelas antigas
       await supabase
         .from('contract_installments')
         .delete()
         .eq('event_id', eventId)
 
-      // Inserir novas parcelas
       const installmentsPayload = installments.map(inst => ({
         event_id: eventId,
         installment_number: inst.installment_number,
@@ -311,7 +302,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
 
       {/* Data e Público Estimado */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Data */}
         <div className="space-y-2">
           <Label htmlFor="event_date">Data *</Label>
           <Input
@@ -325,7 +315,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
           )}
         </div>
 
-        {/* Público Estimado */}
         <div className="space-y-2">
           <Label htmlFor="estimated_audience">Público Estimado</Label>
           <div className="relative">
@@ -347,7 +336,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
 
       {/* Tipo e Categoria */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Tipo de evento */}
         <div className="space-y-2">
           <Label>Tipo de Evento *</Label>
           <Select
@@ -368,7 +356,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
           </Select>
         </div>
 
-        {/* Categoria */}
         <div className="space-y-2">
           <Label>Categoria *</Label>
           <Select
@@ -435,7 +422,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
           />
         </div>
 
-        {/* Parcelas */}
         {hasContract && (
           <div className="pt-4 border-t">
             {loadingInstallments ? (

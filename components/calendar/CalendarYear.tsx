@@ -12,9 +12,11 @@ interface EventData {
   name: string
   event_date: string
   event_type: string
+  event_category?: string
   reservation_status: string
   has_contract: boolean
   is_paid: boolean
+  estimated_audience?: number | null
   contract_due_date: string | null
   observations: string | null
   color_override?: string | null
@@ -41,16 +43,44 @@ export function CalendarYear({ events, holidays }: CalendarYearProps) {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [expandedMonth, setExpandedMonth] = useState<number | null>(null)
 
   const months = Array.from({ length: 12 }, (_, i) => i)
 
-  const handlePrevYear = () => setCurrentYear(prev => prev - 1)
-  const handleNextYear = () => setCurrentYear(prev => prev + 1)
-  const handleCurrentYear = () => setCurrentYear(new Date().getFullYear())
+  const handlePrevYear = () => {
+    setCurrentYear(prev => prev - 1)
+    setExpandedMonth(null)
+  }
+  
+  const handleNextYear = () => {
+    setCurrentYear(prev => prev + 1)
+    setExpandedMonth(null)
+  }
+  
+  const handleCurrentYear = () => {
+    setCurrentYear(new Date().getFullYear())
+    setExpandedMonth(null)
+  }
 
   const handleDayClick = (date: Date) => {
     setSelectedDate(date)
     setIsModalOpen(true)
+  }
+
+  // Handler para clique no evento
+  const handleEventClick = (event: EventData) => {
+    const eventDateParts = event.event_date.split('-')
+    const eventDate = new Date(
+      parseInt(eventDateParts[0]),
+      parseInt(eventDateParts[1]) - 1,
+      parseInt(eventDateParts[2])
+    )
+    setSelectedDate(eventDate)
+    setIsModalOpen(true)
+  }
+
+  const handleToggleExpand = (month: number) => {
+    setExpandedMonth(prev => prev === month ? null : month)
   }
 
   // Filtrar eventos do ano atual
@@ -118,18 +148,30 @@ export function CalendarYear({ events, holidays }: CalendarYearProps) {
         </div>
       </div>
 
+      {/* Dica */}
+      <p className="text-sm text-gray-500 italic">
+        💡 Clique no nome do mês para expandir e ver detalhes dos eventos
+      </p>
+
       {/* Grid de meses */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {months.map((month) => (
-          <CalendarMonth
-            key={month}
-            year={currentYear}
-            month={month}
-            events={yearEvents}
-            holidays={yearHolidays}
-            onDayClick={handleDayClick}
-          />
-        ))}
+        {months.map((month) => {
+          const isExpanded = expandedMonth === month
+
+          return (
+            <CalendarMonth
+              key={month}
+              year={currentYear}
+              month={month}
+              events={yearEvents}
+              holidays={yearHolidays}
+              onDayClick={handleDayClick}
+              onEventClick={handleEventClick}
+              isExpanded={isExpanded}
+              onToggleExpand={() => handleToggleExpand(month)}
+            />
+          )
+        })}
       </div>
 
       {/* Modal de eventos */}

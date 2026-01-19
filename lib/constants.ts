@@ -41,19 +41,26 @@ export const EVENT_CATEGORY_LABELS: Record<string, string> = {
 }
 
 // ===========================================
-// OPÇÕES DE STATUS DE RESERVA
+// OPÇÕES DE STATUS DE RESERVA - ATUALIZADO v2.1
 // ===========================================
 
 export const RESERVATION_STATUS_OPTIONS = [
-  { value: 'SEM_RESERVA', label: 'Sem Reserva' },
   { value: 'PRE_RESERVA', label: 'Pré-Reserva' },
+  { value: 'RESERVA_EM_ANDAMENTO', label: 'Reserva em Andamento' },  // ✅ NOVO
   { value: 'RESERVA_CONFIRMADA', label: 'Reserva Confirmada' },
 ] as const
 
 export const RESERVATION_STATUS_LABELS: Record<string, string> = {
-  SEM_RESERVA: 'Sem Reserva',
   PRE_RESERVA: 'Pré-Reserva',
+  RESERVA_EM_ANDAMENTO: 'Reserva em Andamento',  // ✅ NOVO
   RESERVA_CONFIRMADA: 'Reserva Confirmada',
+}
+
+// ✅ NOVO: Cores por status de reserva
+export const RESERVATION_STATUS_COLORS: Record<string, string> = {
+  PRE_RESERVA: '#9CA3AF',           // Cinza
+  RESERVA_EM_ANDAMENTO: '#F59E0B',  // Âmbar/Laranja
+  RESERVA_CONFIRMADA: '#22C55E',    // Verde
 }
 
 // ===========================================
@@ -181,7 +188,7 @@ export const ROUTES = {
   calendario: '/calendario',
   eventos: '/eventos',
   relatorios: '/relatorios',
-  despesas: '/despesas',  // ✅ NOVO
+  despesas: '/despesas',
   configuracoes: '/configuracoes',
   usuarios: '/usuarios',
 } as const

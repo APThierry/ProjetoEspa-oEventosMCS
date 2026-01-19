@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { RESERVATION_STATUS_COLORS } from '@/lib/constants'  // ✅ NOVO
 
 interface EventData {
   id: string
@@ -45,20 +46,48 @@ export function CalendarDay({
   const dayNumber = format(date, 'd')
   const hasEvents = events.length > 0
 
-  // Determinar cor do indicador
+  // ✅ ATUALIZADO: Determinar cor do indicador com novos status
   const getIndicatorColor = () => {
     if (events.length === 0) return null
     
+    // Prioridade 1: Pago (azul)
     const hasPaid = events.some(e => e.is_paid)
     if (hasPaid) return 'bg-blue-500'
     
+    // Prioridade 2: Com contrato (verde)
     const hasContract = events.some(e => e.has_contract)
     if (hasContract) return 'bg-green-500'
     
+    // Prioridade 3: Reserva confirmada (verde)
+    const hasConfirmed = events.some(e => e.reservation_status === 'RESERVA_CONFIRMADA')
+    if (hasConfirmed) return 'bg-green-500'
+    
+    // ✅ NOVO: Prioridade 4: Reserva em andamento (âmbar/laranja)
+    const hasInProgress = events.some(e => e.reservation_status === 'RESERVA_EM_ANDAMENTO')
+    if (hasInProgress) return 'bg-amber-500'
+    
+    // Prioridade 5: Pré-reserva (cinza)
     const hasPreReserve = events.some(e => e.reservation_status === 'PRE_RESERVA')
     if (hasPreReserve) return 'bg-gray-400'
     
     return 'bg-gray-300'
+  }
+
+  // ✅ NOVO: Função auxiliar para obter cor do status
+  const getStatusColor = (event: EventData) => {
+    if (event.is_paid) return 'bg-blue-500'
+    if (event.has_contract) return 'bg-green-500'
+    
+    switch (event.reservation_status) {
+      case 'RESERVA_CONFIRMADA':
+        return 'bg-green-500'
+      case 'RESERVA_EM_ANDAMENTO':
+        return 'bg-amber-500'
+      case 'PRE_RESERVA':
+        return 'bg-gray-400'
+      default:
+        return 'bg-gray-300'
+    }
   }
 
   const indicatorColor = getIndicatorColor()
@@ -82,16 +111,16 @@ export function CalendarDay({
       {hasEvents && indicatorColor && isCurrentMonth && (
         <div className="absolute bottom-1 flex gap-0.5">
           {events.length <= 3 ? (
-            events.map((_, i) => (
+            events.map((event, i) => (
               <div
                 key={i}
-                className={`w-1 h-1 rounded-full ${indicatorColor}`}
+                className={`w-1 h-1 rounded-full ${getStatusColor(event)}`}
               />
             ))
           ) : (
             <>
-              <div className={`w-1 h-1 rounded-full ${indicatorColor}`} />
-              <div className={`w-1 h-1 rounded-full ${indicatorColor}`} />
+              <div className={`w-1 h-1 rounded-full ${getStatusColor(events[0])}`} />
+              <div className={`w-1 h-1 rounded-full ${getStatusColor(events[1])}`} />
               <span className="text-[8px] text-gray-500">+{events.length - 2}</span>
             </>
           )}
@@ -118,13 +147,7 @@ export function CalendarDay({
               {events.map((event) => (
                 <p key={event.id} className="text-xs">
                   <span
-                    className={`inline-block w-2 h-2 rounded-full mr-1 ${
-                      event.is_paid
-                        ? 'bg-blue-500'
-                        : event.has_contract
-                        ? 'bg-green-500'
-                        : 'bg-gray-400'
-                    }`}
+                    className={`inline-block w-2 h-2 rounded-full mr-1 ${getStatusColor(event)}`}
                   />
                   {event.name}
                 </p>

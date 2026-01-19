@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePermissions } from '@/hooks/usePermissions'
 import { createClient } from '@/lib/supabase/client'
@@ -34,19 +34,35 @@ import {
   FileText, 
   DollarSign,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2,
+  Clock
 } from 'lucide-react'
+import {
+  EVENT_TYPE_LABELS,
+  RESERVATION_STATUS_LABELS,
+  formatCurrency
+} from '@/lib/constants'
 
 interface EventData {
   id: string
   name: string
   event_date: string
   event_type: string
+  event_category?: string
   reservation_status: string
   has_contract: boolean
-  is_paid: boolean
-  contract_due_date: string | null
+  is_paid?: boolean
+  estimated_audience?: number | null
+  contract_due_date?: string | null
   observations: string | null
+}
+
+interface InstallmentInfo {
+  total: number
+  paid: number
+  totalValue: number
+  paidValue: number
 }
 
 interface EventCardProps {
@@ -55,24 +71,52 @@ interface EventCardProps {
   showDate?: boolean
 }
 
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  MARKETING: 'Marketing',
-  FUNDO_CONTRATO: 'Fundo de Contrato'
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  SEM_RESERVA: 'Sem Reserva',
-  PRE_RESERVA: 'Pré-Reserva',
-  RESERVA_CONFIRMADA: 'Reserva Confirmada'
-}
-
 export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [installmentInfo, setInstallmentInfo] = useState<InstallmentInfo | null>(null)
+  
   const { canEditEvent, canDeleteEvent } = usePermissions()
   const { toast } = useToast()
   const router = useRouter()
   const supabase = createClient()
+
+  // Carregar informações das parcelas
+  useEffect(() => {
+    const loadInstallments = async () => {
+      if (!event.has_contract) {
+        setInstallmentInfo(null)
+        return
+      }
+      
+      try {
+        const { data, error } = await supabase
+          .from('contract_installments')
+          .select('amount, payment_status')
+          .eq('event_id', event.id)
+
+        if (error) {
+          console.error('Erro ao carregar parcelas:', error)
+          return
+        }
+
+        if (data && data.length > 0) {
+          const total = data.length
+          const paid = data.filter(i => i.payment_status === 'PAGO').length
+          const totalValue = data.reduce((sum, i) => sum + parseFloat(String(i.amount || 0)), 0)
+          const paidValue = data
+            .filter(i => i.payment_status === 'PAGO')
+            .reduce((sum, i) => sum + parseFloat(String(i.amount || 0)), 0)
+
+          setInstallmentInfo({ total, paid, totalValue, paidValue })
+        }
+      } catch (error) {
+        console.error('Erro ao carregar parcelas:', error)
+      }
+    }
+
+    loadInstallments()
+  }, [event.id, event.has_contract, supabase])
 
   const handleDelete = async () => {
     setDeleting(true)
@@ -111,25 +155,83 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
     }
   }
 
-  // Verificar se contrato está vencido
-  const isOverdue = event.has_contract && 
-    !event.is_paid && 
-    event.contract_due_date && 
-    new Date(event.contract_due_date) < new Date()
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'RESERVA_CONFIRMADA': return 'bg-green-100 text-green-800'
-      case 'PRE_RESERVA': return 'bg-yellow-100 text-yellow-800'
+      case 'RESERVA_EM_ANDAMENTO': return 'bg-yellow-100 text-yellow-800'
+      case 'PRE_RESERVA': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
 
-  const getPaymentColor = () => {
-    if (!event.has_contract) return 'bg-gray-100 text-gray-600'
-    if (event.is_paid) return 'bg-green-100 text-green-800'
-    return 'bg-red-100 text-red-800'
+  // Determinar status de pagamento baseado nas parcelas
+  const getPaymentStatus = () => {
+    if (!event.has_contract) {
+      return null // Não mostrar badge de pagamento
+    }
+
+    // Se temos info das parcelas, usar ela
+    if (installmentInfo) {
+      if (installmentInfo.total === 0) {
+        return {
+          label: 'Sem Parcelas',
+          color: 'bg-gray-100 text-gray-600',
+          icon: FileText
+        }
+      }
+      
+      if (installmentInfo.paid === installmentInfo.total) {
+        return {
+          label: 'Contrato Pago',
+          color: 'bg-blue-100 text-blue-800',
+          icon: CheckCircle2,
+          detail: formatCurrency(installmentInfo.totalValue)
+        }
+      }
+      
+      if (installmentInfo.paid > 0) {
+        return {
+          label: 'Pagamento Parcial',
+          color: 'bg-yellow-100 text-yellow-800',
+          icon: Clock,
+          detail: `${installmentInfo.paid}/${installmentInfo.total} parcelas`
+        }
+      }
+      
+      return {
+        label: 'Pendente',
+        color: 'bg-red-100 text-red-800',
+        icon: FileText,
+        detail: formatCurrency(installmentInfo.totalValue)
+      }
+    }
+
+    // Fallback para o campo antigo is_paid (compatibilidade)
+    if (event.is_paid) {
+      return {
+        label: 'Pago',
+        color: 'bg-blue-100 text-blue-800',
+        icon: DollarSign
+      }
+    }
+
+    return {
+      label: 'Pendente',
+      color: 'bg-red-100 text-red-800',
+      icon: FileText
+    }
   }
+
+  const paymentStatus = getPaymentStatus()
+  const PaymentIcon = paymentStatus?.icon || FileText
+
+  // Verificar se tem parcela vencida (simplificado)
+  const isOverdue = event.has_contract && 
+    !event.is_paid && 
+    installmentInfo && 
+    installmentInfo.paid < installmentInfo.total &&
+    event.contract_due_date && 
+    new Date(event.contract_due_date) < new Date()
 
   return (
     <>
@@ -159,28 +261,27 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
                   {EVENT_TYPE_LABELS[event.event_type] || event.event_type}
                 </Badge>
                 <Badge className={`text-xs ${getStatusColor(event.reservation_status)}`}>
-                  {STATUS_LABELS[event.reservation_status] || event.reservation_status}
+                  {RESERVATION_STATUS_LABELS[event.reservation_status] || event.reservation_status}
                 </Badge>
                 
-                {event.has_contract && (
-                  <Badge className={`text-xs ${getPaymentColor()}`}>
-                    {event.is_paid ? (
-                      <>
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        Pago
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="h-3 w-3 mr-1" />
-                        Pendente
-                      </>
-                    )}
+                {/* Badge de pagamento - só mostra se tem contrato */}
+                {paymentStatus && (
+                  <Badge className={`text-xs ${paymentStatus.color}`}>
+                    <PaymentIcon className="h-3 w-3 mr-1" />
+                    {paymentStatus.label}
                   </Badge>
                 )}
               </div>
 
-              {/* Info de vencimento */}
-              {event.has_contract && event.contract_due_date && !event.is_paid && (
+              {/* Detalhes do pagamento */}
+              {paymentStatus?.detail && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {paymentStatus.detail}
+                </p>
+              )}
+
+              {/* Info de vencimento (se pendente) */}
+              {event.has_contract && event.contract_due_date && installmentInfo && installmentInfo.paid < installmentInfo.total && (
                 <p className={`text-xs mt-2 ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
                   {isOverdue ? '⚠️ Vencido em ' : 'Vence em '}
                   {formatEventDate(event.contract_due_date)}

@@ -1,7 +1,7 @@
 // lib/types.ts
 
 // ===========================================
-// TIPOS ATUALIZADOS v2.0
+// TIPOS ATUALIZADOS v2.1
 // ===========================================
 
 export type UserRole = 'ADMIN' | 'EDITOR' | 'VISUALIZADOR'
@@ -20,7 +20,8 @@ export type EventCategory =
   | 'CONGRESSO'
   | 'OUTROS'
 
-export type ReservationStatus = 'SEM_RESERVA' | 'PRE_RESERVA' | 'RESERVA_CONFIRMADA'
+// ✅ ATUALIZADO v2.1: Removido SEM_RESERVA, Adicionado RESERVA_EM_ANDAMENTO
+export type ReservationStatus = 'PRE_RESERVA' | 'RESERVA_EM_ANDAMENTO' | 'RESERVA_CONFIRMADA'
 
 // ✅ NOVO: Status de pagamento
 export type PaymentStatus = 'PAGO' | 'NAO_PAGO'
@@ -71,10 +72,10 @@ export interface Event {
   name: string
   event_date: string
   event_type: EventType
-  event_category: EventCategory  // ✅ NOVO
+  event_category: EventCategory
   reservation_status: ReservationStatus
   has_contract: boolean
-  estimated_audience: number | null  // ✅ NOVO
+  estimated_audience: number | null
   observations: string | null
   color_override: string | null
   created_by: string | null
@@ -177,21 +178,21 @@ export interface AuthUser {
 }
 
 // ===========================================
-// CORES PADRÃO
+// CORES PADRÃO - ATUALIZADO v2.1
 // ===========================================
 
 export interface ColorScheme {
   reserva_com_contrato: string
   reserva_paga: string
   pre_reserva: string
-  sem_reserva: string
+  reserva_em_andamento: string  // ✅ NOVO: Substituiu sem_reserva
 }
 
 export const DEFAULT_COLORS: ColorScheme = {
-  reserva_com_contrato: '#22C55E',
-  reserva_paga: '#3B82F6',
-  pre_reserva: '#9CA3AF',
-  sem_reserva: '#F3F4F6',
+  reserva_com_contrato: '#22C55E',    // Verde - Contrato assinado
+  reserva_paga: '#3B82F6',            // Azul - Pago
+  pre_reserva: '#9CA3AF',             // Cinza - Pré-reserva
+  reserva_em_andamento: '#F59E0B',    // ✅ NOVO: Âmbar/Laranja - Em andamento
 }
 
 // ===========================================
