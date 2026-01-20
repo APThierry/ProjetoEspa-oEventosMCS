@@ -7,14 +7,20 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
+import { ChangePasswordDialog } from '@/components/shared/ChangePasswordDialog'
 import { 
   Settings, 
   Palette, 
   Bell, 
   Save,
   Loader2,
-  RotateCcw
+  RotateCcw,
+  User,
+  Key,
+  Mail,
+  Shield
 } from 'lucide-react'
 
 interface ColorScheme {
@@ -29,6 +35,12 @@ interface AlertSettings {
   send_overdue_alert: boolean
 }
 
+interface UserInfo {
+  email: string
+  fullName: string
+  role: string
+}
+
 const DEFAULT_COLORS: ColorScheme = {
   reserva_com_contrato: '#22C55E',
   reserva_paga: '#3B82F6',
@@ -41,11 +53,25 @@ const DEFAULT_ALERT_SETTINGS: AlertSettings = {
   send_overdue_alert: true,
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: 'Administrador',
+  EDITOR: 'Editor',
+  VISUALIZADOR: 'Visualizador',
+}
+
+const ROLE_COLORS: Record<string, string> = {
+  ADMIN: 'bg-red-100 text-red-800',
+  EDITOR: 'bg-blue-100 text-blue-800',
+  VISUALIZADOR: 'bg-gray-100 text-gray-800',
+}
+
 export default function ConfiguracoesPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [colors, setColors] = useState<ColorScheme>(DEFAULT_COLORS)
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(DEFAULT_ALERT_SETTINGS)
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
 
   const supabase = createClient()
   const { toast } = useToast()
@@ -53,6 +79,23 @@ export default function ConfiguracoesPage() {
   const loadSettings = async () => {
     setLoading(true)
     try {
+      // Carregar dados do usuário logado
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('full_name, role')
+          .eq('user_id', user.id)
+          .single()
+
+        setUserInfo({
+          email: user.email || '',
+          fullName: profile?.full_name || 'Usuário',
+          role: profile?.role || 'VISUALIZADOR',
+        })
+      }
+
       // Carregar cores
       const { data: colorData } = await supabase
         .from('system_settings')
@@ -90,8 +133,11 @@ export default function ConfiguracoesPage() {
     try {
       const { error } = await supabase
         .from('system_settings')
-        .update({ value: colors })
-        .eq('key', 'color_scheme')
+        .upsert({ 
+          key: 'color_scheme',
+          value: colors,
+          updated_at: new Date().toISOString()
+        })
 
       if (error) throw error
 
@@ -115,8 +161,11 @@ export default function ConfiguracoesPage() {
     try {
       const { error } = await supabase
         .from('system_settings')
-        .update({ value: alertSettings })
-        .eq('key', 'alert_settings')
+        .upsert({ 
+          key: 'alert_settings',
+          value: alertSettings,
+          updated_at: new Date().toISOString()
+        })
 
       if (error) throw error
 
@@ -160,6 +209,64 @@ export default function ConfiguracoesPage() {
           Personalize o sistema de acordo com suas necessidades
         </p>
       </div>
+
+      {/* ✅ NOVO: Card Minha Conta */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Minha Conta
+          </CardTitle>
+          <CardDescription>
+            Informações da sua conta e segurança
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Info do usuário */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="text-gray-500 flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Nome
+              </Label>
+              <p className="font-medium">{userInfo?.fullName}</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-gray-500 flex items-center gap-2">
+                <Mail className="h-4 w-4" />
+                E-mail
+              </Label>
+              <p className="font-medium">{userInfo?.email}</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-gray-500 flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Nível de Acesso
+              </Label>
+              <Badge className={ROLE_COLORS[userInfo?.role || 'VISUALIZADOR']}>
+                {ROLE_LABELS[userInfo?.role || 'VISUALIZADOR']}
+              </Badge>
+            </div>
+          </div>
+
+          {/* Botão de alterar senha */}
+          <div className="pt-4 border-t">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Segurança</Label>
+                <p className="text-sm text-gray-500">Altere sua senha de acesso</p>
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowPasswordDialog(true)}
+              >
+                <Key className="h-4 w-4 mr-2" />
+                Alterar Senha
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Cores do Calendário */}
@@ -240,32 +347,10 @@ export default function ConfiguracoesPage() {
               </div>
             </div>
 
-            {/* Sem Reserva */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <Label>Sem Reserva</Label>
-                <p className="text-sm text-gray-500">
-                  Eventos sem reserva definida
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div 
-                  className="w-10 h-10 rounded-lg border-2 border-gray-200"
-                  style={{ backgroundColor: colors.sem_reserva }}
-                />
-                <Input
-                  type="color"
-                  value={colors.sem_reserva}
-                  onChange={(e) => setColors({ ...colors, sem_reserva: e.target.value })}
-                  className="w-16 h-10 p-1 cursor-pointer"
-                />
-              </div>
-            </div>
-
             {/* Preview */}
             <div className="pt-4 border-t">
               <Label className="mb-3 block">Preview</Label>
-              <div className="flex gap-2">
+              <div className="flex gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
                   <div 
                     className="w-4 h-4 rounded-full"
@@ -413,6 +498,12 @@ export default function ConfiguracoesPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog de Alterar Senha */}
+      <ChangePasswordDialog 
+        isOpen={showPasswordDialog} 
+        onClose={() => setShowPasswordDialog(false)} 
+      />
     </div>
   )
 }
