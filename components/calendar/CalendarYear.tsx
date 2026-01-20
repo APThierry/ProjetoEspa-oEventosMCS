@@ -6,7 +6,7 @@ import { EventModal } from '../events/EventModal'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-// Interfaces locais
+// ✅ ATUALIZADO: Interface completa
 interface EventData {
   id: string
   name: string
@@ -16,13 +16,18 @@ interface EventData {
   reservation_status: string
   has_contract: boolean
   is_paid: boolean
+  isPartiallyPaid?: boolean
   estimated_audience?: number | null
-  contract_due_date: string | null
+  contract_due_date?: string | null
   observations: string | null
   color_override?: string | null
   created_by?: string | null
   created_at?: string
   updated_at?: string
+  totalAmount?: number
+  paidAmount?: number
+  installmentsCount?: number
+  paidInstallmentsCount?: number
 }
 
 interface HolidayData {
@@ -67,7 +72,6 @@ export function CalendarYear({ events, holidays }: CalendarYearProps) {
     setIsModalOpen(true)
   }
 
-  // Handler para clique no evento
   const handleEventClick = (event: EventData) => {
     const eventDateParts = event.event_date.split('-')
     const eventDate = new Date(
@@ -128,7 +132,7 @@ export function CalendarYear({ events, holidays }: CalendarYearProps) {
         </Button>
       </div>
 
-      {/* Legenda */}
+      {/* ✅ ATUALIZADO: Legenda SEM "Pagamento Parcial" */}
       <div className="flex flex-wrap gap-4 text-sm">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-blue-500" />

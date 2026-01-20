@@ -17,16 +17,28 @@ import { EventCard } from './EventCard'
 import { EventForm } from './EventForm'
 import { Plus, Calendar } from 'lucide-react'
 
+// ✅ ATUALIZADO: Interface alinhada com CalendarYear
 interface EventData {
   id: string
   name: string
   event_date: string
   event_type: string
+  event_category?: string
   reservation_status: string
   has_contract: boolean
   is_paid: boolean
-  contract_due_date: string | null
+  isPartiallyPaid?: boolean
+  estimated_audience?: number | null
+  contract_due_date?: string | null
   observations: string | null
+  color_override?: string | null
+  created_by?: string | null
+  created_at?: string
+  updated_at?: string
+  totalAmount?: number
+  paidAmount?: number
+  installmentsCount?: number
+  paidInstallmentsCount?: number
 }
 
 interface HolidayData {

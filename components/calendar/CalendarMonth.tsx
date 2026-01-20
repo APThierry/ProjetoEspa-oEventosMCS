@@ -15,7 +15,7 @@ import { ptBR } from 'date-fns/locale'
 import { CalendarDay } from './CalendarDay'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { ChevronDown, ChevronUp, Calendar, Users, DollarSign, FileText } from 'lucide-react'
+import { ChevronDown, ChevronUp, Calendar, Users, DollarSign, FileText, Clock } from 'lucide-react'
 import { EVENT_TYPE_LABELS, EVENT_CATEGORY_LABELS, formatCurrency } from '@/lib/constants'
 
 interface EventData {
@@ -27,9 +27,13 @@ interface EventData {
   reservation_status: string
   has_contract: boolean
   is_paid: boolean
+  isPartiallyPaid?: boolean
   estimated_audience?: number | null
-  contract_due_date: string | null
   observations: string | null
+  totalAmount?: number
+  paidAmount?: number
+  installmentsCount?: number
+  paidInstallmentsCount?: number
 }
 
 interface HolidayData {
@@ -46,7 +50,7 @@ interface CalendarMonthProps {
   events: EventData[]
   holidays: HolidayData[]
   onDayClick: (date: Date) => void
-  onEventClick?: (event: EventData) => void  // NOVO
+  onEventClick?: (event: EventData) => void
   isExpanded?: boolean
   onToggleExpand?: () => void
 }
@@ -57,7 +61,7 @@ export function CalendarMonth({
   events,
   holidays,
   onDayClick,
-  onEventClick,  // NOVO
+  onEventClick,
   isExpanded = false,
   onToggleExpand
 }: CalendarMonthProps) {
@@ -72,7 +76,6 @@ export function CalendarMonth({
   const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
   const weekDaysFull = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
-  // Filtrar eventos do mês atual
   const monthEvents = useMemo(() => {
     return events.filter(event => {
       const eventDate = new Date(event.event_date)
@@ -80,7 +83,6 @@ export function CalendarMonth({
     }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime())
   }, [events, month, year])
 
-  // Criar mapa de eventos por data
   const eventsByDate = useMemo(() => {
     const map = new Map<string, EventData[]>()
     events.forEach(event => {
@@ -93,7 +95,6 @@ export function CalendarMonth({
     return map
   }, [events])
 
-  // Criar mapa de feriados por data
   const holidaysByDate = useMemo(() => {
     const map = new Map<string, HolidayData>()
     holidays.forEach(holiday => {
@@ -102,27 +103,42 @@ export function CalendarMonth({
     return map
   }, [holidays])
 
-  // Obter cor do status
   const getStatusColor = (event: EventData) => {
     if (event.is_paid) return 'bg-blue-100 text-blue-800 border-blue-200'
+    if (event.isPartiallyPaid) return 'bg-amber-100 text-amber-800 border-amber-200'
     if (event.has_contract) return 'bg-green-100 text-green-800 border-green-200'
+    if (event.reservation_status === 'RESERVA_EM_ANDAMENTO') return 'bg-amber-100 text-amber-800 border-amber-200'
     if (event.reservation_status === 'PRE_RESERVA') return 'bg-gray-100 text-gray-800 border-gray-200'
+    if (event.reservation_status === 'RESERVA_CONFIRMADA') return 'bg-green-100 text-green-800 border-green-200'
     return 'bg-gray-50 text-gray-600 border-gray-200'
   }
 
   const getStatusLabel = (event: EventData) => {
-    if (event.is_paid) return 'Pago'
+    if (event.is_paid) return 'Contrato Pago'
+    if (event.isPartiallyPaid && event.installmentsCount) {
+      return `${event.paidInstallmentsCount}/${event.installmentsCount} parcelas`
+    }
     if (event.has_contract) return 'Com Contrato'
+    if (event.reservation_status === 'RESERVA_EM_ANDAMENTO') return 'Em Andamento'
     if (event.reservation_status === 'PRE_RESERVA') return 'Pré-reserva'
     if (event.reservation_status === 'RESERVA_CONFIRMADA') return 'Confirmado'
-    return 'Sem reserva'
+    return 'Pré-reserva'
+  }
+
+  const getCardBorderColor = (event: EventData) => {
+    if (event.is_paid) return 'border-l-blue-500'
+    if (event.isPartiallyPaid) return 'border-l-amber-500'
+    if (event.has_contract) return 'border-l-green-500'
+    if (event.reservation_status === 'RESERVA_EM_ANDAMENTO') return 'border-l-amber-400'
+    if (event.reservation_status === 'RESERVA_CONFIRMADA') return 'border-l-green-400'
+    if (event.reservation_status === 'PRE_RESERVA') return 'border-l-gray-400'
+    return 'border-l-gray-300'
   }
 
   // Versão compacta (não expandida)
   if (!isExpanded) {
     return (
       <div className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow">
-        {/* Nome do mês - clicável */}
         <button
           onClick={onToggleExpand}
           className="w-full flex items-center justify-center gap-2 mb-2 hover:bg-gray-50 rounded py-1 transition-colors"
@@ -138,7 +154,6 @@ export function CalendarMonth({
           <ChevronDown className="h-4 w-4 text-gray-400" />
         </button>
 
-        {/* Dias da semana */}
         <div className="grid grid-cols-7 gap-1 mb-1">
           {weekDays.map((day) => (
             <div
@@ -150,7 +165,6 @@ export function CalendarMonth({
           ))}
         </div>
 
-        {/* Dias do mês */}
         <div className="grid grid-cols-7 gap-1">
           {days.map((day) => {
             const dateKey = format(day, 'yyyy-MM-dd')
@@ -178,7 +192,6 @@ export function CalendarMonth({
   // Versão expandida
   return (
     <div className="col-span-full border rounded-lg bg-white shadow-lg overflow-hidden">
-      {/* Header do mês expandido */}
       <button
         onClick={onToggleExpand}
         className="w-full flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors"
@@ -198,9 +211,7 @@ export function CalendarMonth({
       </button>
 
       <div className="p-6">
-        {/* Calendário expandido */}
         <div className="mb-6">
-          {/* Dias da semana */}
           <div className="grid grid-cols-7 gap-2 mb-2">
             {weekDaysFull.map((day) => (
               <div
@@ -212,7 +223,6 @@ export function CalendarMonth({
             ))}
           </div>
 
-          {/* Dias do mês - versão expandida */}
           <div className="grid grid-cols-7 gap-2">
             {days.map((day) => {
               const dateKey = format(day, 'yyyy-MM-dd')
@@ -232,19 +242,18 @@ export function CalendarMonth({
                       ? 'bg-white hover:bg-gray-50 hover:border-blue-300 cursor-pointer' 
                       : 'bg-gray-50 text-gray-300 cursor-default'}
                     ${isToday(day) ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200'}
-                    ${holiday && isCurrentMonth ? 'bg-red-50' : ''}
+                    ${holiday && isCurrentMonth ? 'bg-red-50 hover:bg-red-100 border-red-200' : ''}
                   `}
                 >
-                  {/* Número do dia */}
                   <span className={`
                     text-sm font-semibold
                     ${isToday(day) ? 'bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center' : ''}
                     ${!isCurrentMonth ? 'text-gray-300' : ''}
+                    ${holiday && isCurrentMonth && !isToday(day) ? 'text-red-700' : ''}
                   `}>
                     {dayNumber}
                   </span>
 
-                  {/* Feriado */}
                   {holiday && isCurrentMonth && (
                     <div className="mt-1">
                       <span className="text-[10px] text-red-600 font-medium truncate block">
@@ -253,7 +262,6 @@ export function CalendarMonth({
                     </div>
                   )}
 
-                  {/* Eventos do dia */}
                   {dayEvents.length > 0 && isCurrentMonth && (
                     <div className="mt-1 space-y-1">
                       {dayEvents.slice(0, 2).map((event) => (
@@ -283,7 +291,6 @@ export function CalendarMonth({
           </div>
         </div>
 
-        {/* Lista de eventos do mês */}
         {monthEvents.length > 0 && (
           <div className="border-t pt-6">
             <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -293,30 +300,17 @@ export function CalendarMonth({
             
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {monthEvents.map((event) => {
-                // Extrair dia e mês diretamente da string (evita problemas de timezone)
-                // event.event_date = "2026-01-15" → dia = "15", mes = "01"
                 const [ano, mes, dia] = event.event_date.split('-')
                 const dataFormatada = `${dia}/${mes}`
-                
-                // Criar data para o onClick (sem problema porque é só para navegar)
                 const eventDate = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia))
 
                 return (
                   <Card
                     key={event.id}
-                    className={`p-4 cursor-pointer hover:shadow-md transition-shadow border-l-4 ${
-                      event.is_paid
-                        ? 'border-l-blue-500'
-                        : event.has_contract
-                        ? 'border-l-green-500'
-                        : event.reservation_status === 'PRE_RESERVA'
-                        ? 'border-l-gray-400'
-                        : 'border-l-gray-300'
-                    }`}
+                    className={`p-4 cursor-pointer hover:shadow-md transition-shadow border-l-4 ${getCardBorderColor(event)}`}
                     onClick={() => onEventClick ? onEventClick(event) : onDayClick(eventDate)}
                   >
                     <div className="space-y-2">
-                      {/* Nome e data */}
                       <div className="flex items-start justify-between gap-2">
                         <h5 className="font-semibold text-gray-800 truncate flex-1">
                           {event.name}
@@ -326,7 +320,6 @@ export function CalendarMonth({
                         </Badge>
                       </div>
 
-                      {/* Tipo e Categoria */}
                       <div className="flex flex-wrap gap-1">
                         <Badge variant="secondary" className="text-xs">
                           {EVENT_TYPE_LABELS[event.event_type] || event.event_type}
@@ -338,9 +331,13 @@ export function CalendarMonth({
                         )}
                       </div>
 
-                      {/* Status e Info */}
                       <div className="flex items-center justify-between text-xs text-gray-500">
                         <Badge className={`${getStatusColor(event)} text-xs`}>
+                          {event.is_paid ? (
+                            <DollarSign className="h-3 w-3 mr-1" />
+                          ) : event.isPartiallyPaid ? (
+                            <Clock className="h-3 w-3 mr-1" />
+                          ) : null}
                           {getStatusLabel(event)}
                         </Badge>
                         
@@ -351,6 +348,21 @@ export function CalendarMonth({
                           </span>
                         )}
                       </div>
+
+                      {event.has_contract && event.totalAmount && event.totalAmount > 0 && (
+                        <div className="text-xs text-gray-600 pt-1 border-t">
+                          {event.is_paid ? (
+                            <span className="text-green-600 font-medium">
+                              {formatCurrency(event.totalAmount)}
+                            </span>
+                          ) : (
+                            <span>
+                              <span className="text-green-600">{formatCurrency(event.paidAmount || 0)}</span>
+                              <span className="text-gray-400"> / {formatCurrency(event.totalAmount)}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </Card>
                 )
@@ -359,7 +371,6 @@ export function CalendarMonth({
           </div>
         )}
 
-        {/* Mensagem se não há eventos */}
         {monthEvents.length === 0 && (
           <div className="border-t pt-6 text-center text-gray-500">
             <Calendar className="h-12 w-12 mx-auto mb-2 opacity-20" />

@@ -30,11 +30,12 @@ import {
   FileText, 
   DollarSign, 
   Filter,
-  Eye,
   Edit,
   Trash2,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle,
+  Clock
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -56,32 +57,38 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EventForm } from '@/components/events/EventForm'
+import {
+  EVENT_TYPE_OPTIONS,
+  RESERVATION_STATUS_OPTIONS,
+  EVENT_TYPE_LABELS,
+  RESERVATION_STATUS_LABELS,
+} from '@/lib/constants'
 
+// ✅ ATUALIZADO: Interface do evento
 interface Event {
   id: string
   name: string
   event_date: string
   event_type: string
+  event_category: string
   reservation_status: string
   has_contract: boolean
-  is_paid: boolean
-  contract_due_date: string | null
+  estimated_audience: number | null
   observations: string | null
 }
 
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  MARKETING: 'Marketing',
-  FUNDO_CONTRATO: 'Fundo de Contrato'
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  SEM_RESERVA: 'Sem Reserva',
-  PRE_RESERVA: 'Pré-Reserva',
-  RESERVA_CONFIRMADA: 'Confirmada'
+// ✅ NOVO: Interface para evento com dados de pagamento
+interface EventWithPayment extends Event {
+  totalAmount: number
+  paidAmount: number
+  isPaid: boolean
+  isPartiallyPaid: boolean
+  installmentsCount: number
+  paidInstallmentsCount: number
 }
 
 export default function EventosPage() {
-  const [events, setEvents] = useState<Event[]>([])
+  const [events, setEvents] = useState<EventWithPayment[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
@@ -91,7 +98,6 @@ export default function EventosPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingEvent, setEditingEvent] = useState<Event | null>(null)
 
-  // ✅ NOVO: Estado para permissões
   const [userRole, setUserRole] = useState<string | null>(null)
   const [loadingPermissions, setLoadingPermissions] = useState(true)
 
@@ -99,13 +105,11 @@ export default function EventosPage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  // ✅ NOVO: Verificar permissões baseado na role
   const canCreate = userRole === 'ADMIN' || userRole === 'EDITOR'
   const canEdit = userRole === 'ADMIN' || userRole === 'EDITOR'
   const canDelete = userRole === 'ADMIN' || userRole === 'EDITOR'
   const isViewer = userRole === 'VISUALIZADOR'
 
-  // ✅ NOVO: Carregar permissões do usuário
   useEffect(() => {
     const loadUserPermissions = async () => {
       try {
@@ -122,7 +126,7 @@ export default function EventosPage() {
         }
       } catch (error) {
         console.error('Erro ao carregar permissões:', error)
-        setUserRole('VISUALIZADOR') // Default seguro
+        setUserRole('VISUALIZADOR')
       } finally {
         setLoadingPermissions(false)
       }
@@ -131,16 +135,59 @@ export default function EventosPage() {
     loadUserPermissions()
   }, [supabase])
 
+  // ✅ ATUALIZADO: Carregar eventos com parcelas
   const loadEvents = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      // Carregar eventos
+      const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
         .order('event_date', { ascending: true })
 
-      if (error) throw error
-      setEvents(data || [])
+      if (eventsError) throw eventsError
+
+      const eventList = eventsData || []
+      
+      if (eventList.length === 0) {
+        setEvents([])
+        return
+      }
+
+      // Carregar parcelas de todos os eventos
+      const eventIds = eventList.map(e => e.id)
+      const { data: installments } = await supabase
+        .from('contract_installments')
+        .select('*')
+        .in('event_id', eventIds)
+
+      const installmentList = installments || []
+
+      // Calcular status de pagamento para cada evento
+      const eventsWithPayment: EventWithPayment[] = eventList.map(event => {
+        const eventInstallments = installmentList.filter(i => i.event_id === event.id)
+        const totalAmount = eventInstallments.reduce((sum, i) => sum + Number(i.amount), 0)
+        const paidInstallments = eventInstallments.filter(i => i.payment_status === 'PAGO')
+        const paidAmount = paidInstallments.reduce((sum, i) => sum + Number(i.amount), 0)
+        
+        const isPaid = eventInstallments.length > 0 && 
+          eventInstallments.every(i => i.payment_status === 'PAGO')
+        
+        const isPartiallyPaid = eventInstallments.some(i => i.payment_status === 'PAGO') && 
+          eventInstallments.some(i => i.payment_status === 'NAO_PAGO')
+
+        return {
+          ...event,
+          totalAmount,
+          paidAmount,
+          isPaid,
+          isPartiallyPaid,
+          installmentsCount: eventInstallments.length,
+          paidInstallmentsCount: paidInstallments.length,
+        }
+      })
+
+      setEvents(eventsWithPayment)
     } catch (error) {
       console.error('Erro ao carregar eventos:', error)
       toast({
@@ -160,7 +207,6 @@ export default function EventosPage() {
   const handleDelete = async () => {
     if (!deleteId) return
 
-    // ✅ NOVO: Verificação de segurança
     if (!canDelete) {
       toast({
         title: 'Acesso negado',
@@ -172,6 +218,13 @@ export default function EventosPage() {
 
     setDeleting(true)
     try {
+      // Deletar parcelas primeiro
+      await supabase
+        .from('contract_installments')
+        .delete()
+        .eq('event_id', deleteId)
+
+      // Depois deletar o evento
       const { error } = await supabase
         .from('events')
         .delete()
@@ -197,8 +250,7 @@ export default function EventosPage() {
     }
   }
 
-  // ✅ NOVO: Handler para editar com verificação
-  const handleEdit = (event: Event) => {
+  const handleEdit = (event: EventWithPayment) => {
     if (!canEdit) {
       toast({
         title: 'Acesso negado',
@@ -210,7 +262,6 @@ export default function EventosPage() {
     setEditingEvent(event)
   }
 
-  // ✅ NOVO: Handler para criar com verificação
   const handleCreate = () => {
     if (!canCreate) {
       toast({
@@ -238,23 +289,48 @@ export default function EventosPage() {
     }
   }
 
+  // ✅ ATUALIZADO: Cores de status
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'RESERVA_CONFIRMADA': return 'bg-green-100 text-green-800'
-      case 'PRE_RESERVA': return 'bg-yellow-100 text-yellow-800'
+      case 'RESERVA_EM_ANDAMENTO': return 'bg-amber-100 text-amber-800'
+      case 'PRE_RESERVA': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
 
-  const getPaymentBadge = (event: Event) => {
-    if (!event.has_contract) return null
-    if (event.is_paid) {
-      return <Badge className="bg-green-100 text-green-800"><DollarSign className="h-3 w-3 mr-1" />Pago</Badge>
+  // ✅ ATUALIZADO: Badge de pagamento baseado nas parcelas
+  const getPaymentBadge = (event: EventWithPayment) => {
+    if (!event.has_contract || event.installmentsCount === 0) {
+      return <Badge variant="outline" className="text-gray-500">Sem contrato</Badge>
     }
-    return <Badge className="bg-red-100 text-red-800"><FileText className="h-3 w-3 mr-1" />Pendente</Badge>
+    
+    if (event.isPaid) {
+      return (
+        <Badge className="bg-green-100 text-green-800">
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Pago
+        </Badge>
+      )
+    }
+    
+    if (event.isPartiallyPaid) {
+      return (
+        <Badge className="bg-amber-100 text-amber-800">
+          <Clock className="h-3 w-3 mr-1" />
+          {event.paidInstallmentsCount}/{event.installmentsCount} parcelas
+        </Badge>
+      )
+    }
+    
+    return (
+      <Badge className="bg-red-100 text-red-800">
+        <FileText className="h-3 w-3 mr-1" />
+        Pendente
+      </Badge>
+    )
   }
 
-  // ✅ NOVO: Loading enquanto verifica permissões
   if (loadingPermissions) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -277,7 +353,6 @@ export default function EventosPage() {
           </p>
         </div>
         
-        {/* ✅ NOVO: Botão só aparece se pode criar */}
         {canCreate && (
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4 mr-2" />
@@ -286,7 +361,6 @@ export default function EventosPage() {
         )}
       </div>
 
-      {/* ✅ NOVO: Aviso para visualizadores */}
       {isViewer && (
         <Card className="border-yellow-200 bg-yellow-50">
           <CardContent className="flex items-center gap-3 py-4">
@@ -317,25 +391,32 @@ export default function EventosPage() {
                 className="pl-10"
               />
             </div>
+            {/* ✅ ATUALIZADO: Tipos de evento */}
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger>
                 <SelectValue placeholder="Tipo de evento" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os tipos</SelectItem>
-                <SelectItem value="MARKETING">Marketing</SelectItem>
-                <SelectItem value="FUNDO_CONTRATO">Fundo de Contrato</SelectItem>
+                {EVENT_TYPE_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {/* ✅ ATUALIZADO: Status de reserva */}
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger>
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os status</SelectItem>
-                <SelectItem value="SEM_RESERVA">Sem Reserva</SelectItem>
-                <SelectItem value="PRE_RESERVA">Pré-Reserva</SelectItem>
-                <SelectItem value="RESERVA_CONFIRMADA">Confirmada</SelectItem>
+                {RESERVATION_STATUS_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -380,7 +461,6 @@ export default function EventosPage() {
                     <TableHead>Tipo</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Pagamento</TableHead>
-                    {/* ✅ NOVO: Coluna de ações só aparece se pode editar ou excluir */}
                     {(canEdit || canDelete) && (
                       <TableHead className="text-right">Ações</TableHead>
                     )}
@@ -398,12 +478,11 @@ export default function EventosPage() {
                       </TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(event.reservation_status)}>
-                          {STATUS_LABELS[event.reservation_status] || event.reservation_status}
+                          {RESERVATION_STATUS_LABELS[event.reservation_status] || event.reservation_status}
                         </Badge>
                       </TableCell>
                       <TableCell>{getPaymentBadge(event)}</TableCell>
                       
-                      {/* ✅ NOVO: Células de ação condicionais */}
                       {(canEdit || canDelete) && (
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
@@ -440,7 +519,7 @@ export default function EventosPage() {
         </CardContent>
       </Card>
 
-      {/* Modal de Criar/Editar - só renderiza se pode criar/editar */}
+      {/* Modal de Criar/Editar */}
       {(canCreate || canEdit) && (
         <Dialog 
           open={showCreateModal || !!editingEvent} 
@@ -479,7 +558,7 @@ export default function EventosPage() {
         </Dialog>
       )}
 
-      {/* Dialog de Confirmação de Exclusão - só renderiza se pode excluir */}
+      {/* Dialog de Confirmação de Exclusão */}
       {canDelete && (
         <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
           <AlertDialogContent>
@@ -487,6 +566,7 @@ export default function EventosPage() {
               <AlertDialogTitle>Excluir evento?</AlertDialogTitle>
               <AlertDialogDescription>
                 Tem certeza que deseja excluir este evento? Esta ação não pode ser desfeita.
+                As parcelas associadas também serão excluídas.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

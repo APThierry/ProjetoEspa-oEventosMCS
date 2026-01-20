@@ -22,22 +22,20 @@ import {
   AlertCircle,
   Users,
   Receipt,
-  PieChart
+  PieChart,
+  Wallet
 } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths, startOfQuarter, endOfQuarter } from 'date-fns'
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, startOfQuarter, endOfQuarter } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
-  EVENT_TYPE_LABELS,
   EVENT_CATEGORY_LABELS,
-  EVENT_CATEGORY_OPTIONS,
   CATEGORY_COLORS,
   EXPENSE_CATEGORY_LABELS,
   EXPENSE_CATEGORY_COLORS,
-  RESERVATION_STATUS_COLORS,  // ✅ NOVO: Importar cores dos status
+  RESERVATION_STATUS_COLORS,
   formatCurrency,
 } from '@/lib/constants'
 
-// ✅ ATUALIZADO: Interface Stats
 interface Stats {
   totalEvents: number
   cevEvents: number
@@ -45,13 +43,12 @@ interface Stats {
   cevRevenue: number
   fppRevenue: number
   withContract: number
-  totalRevenue: number
-  totalPaid: number
-  totalPending: number
+  totalRevenue: number      // Total contratado
+  totalPaid: number         // Total recebido
+  totalPending: number      // Total pendente
   totalExpenses: number
-  netResult: number
+  netResult: number         // Receita recebida - Despesas
   totalAudience: number
-  // ✅ ATUALIZADO: Removido semReserva, adicionado emAndamento
   preReserva: number
   emAndamento: number
   confirmada: number
@@ -81,7 +78,6 @@ export default function RelatoriosPage() {
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('year')
   const [filterType, setFilterType] = useState('all')
-  // ✅ ATUALIZADO: Estado inicial
   const [stats, setStats] = useState<Stats>({
     totalEvents: 0,
     cevEvents: 0,
@@ -96,7 +92,7 @@ export default function RelatoriosPage() {
     netResult: 0,
     totalAudience: 0,
     preReserva: 0,
-    emAndamento: 0,  // ✅ NOVO
+    emAndamento: 0,
     confirmada: 0
   })
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
@@ -173,13 +169,16 @@ export default function RelatoriosPage() {
 
       const expenseList = expenses || []
 
-      // Calcular estatísticas
+      // ✅ CORRIGIDO: Calcular estatísticas
       const totalRevenue = installments.reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0)
       const totalPaid = installments
         .filter(inst => inst.payment_status === 'PAGO')
         .reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0)
       const totalPending = totalRevenue - totalPaid
       const totalExpenses = expenseList.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0)
+
+      // ✅ CORRIGIDO: Resultado líquido = Receita RECEBIDA - Despesas
+      const netResult = totalPaid - totalExpenses
 
       // Calcular receita por tipo de evento
       const cevRevenue = eventList
@@ -200,7 +199,6 @@ export default function RelatoriosPage() {
           return sum + eventRevenue
         }, 0)
 
-      // ✅ ATUALIZADO: Cálculo das estatísticas
       const newStats: Stats = {
         totalEvents: eventList.length,
         cevEvents: eventList.filter(e => e.event_type === 'CEV_502').length,
@@ -212,9 +210,8 @@ export default function RelatoriosPage() {
         totalPaid,
         totalPending,
         totalExpenses,
-        netResult: totalPaid - totalExpenses,
+        netResult,
         totalAudience: eventList.reduce((sum, e) => sum + (e.estimated_audience || 0), 0),
-        // ✅ ATUALIZADO: Novos filtros de status
         preReserva: eventList.filter(e => e.reservation_status === 'PRE_RESERVA').length,
         emAndamento: eventList.filter(e => e.reservation_status === 'RESERVA_EM_ANDAMENTO').length,
         confirmada: eventList.filter(e => e.reservation_status === 'RESERVA_CONFIRMADA').length
@@ -267,7 +264,6 @@ export default function RelatoriosPage() {
         })
       })
 
-      // Adicionar despesas aos meses
       expenseList.forEach(expense => {
         const month = format(new Date(expense.expense_date), 'yyyy-MM')
         const current = monthMap.get(month) || { events: 0, revenue: 0, expenses: 0 }
@@ -375,7 +371,7 @@ export default function RelatoriosPage() {
         </div>
       ) : (
         <>
-          {/* Cards de Estatísticas Principais */}
+          {/* ✅ CORRIGIDO: Cards de Estatísticas Principais */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -390,6 +386,7 @@ export default function RelatoriosPage() {
               </CardContent>
             </Card>
 
+            {/* ✅ CORRIGIDO: Receita Total mostra valor recebido + pendente */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-500">
@@ -424,6 +421,7 @@ export default function RelatoriosPage() {
               </CardContent>
             </Card>
 
+            {/* ✅ CORRIGIDO: Resultado Líquido = Receita Recebida - Despesas */}
             <Card className={stats.netResult >= 0 ? 'border-green-200' : 'border-red-200'}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-500">
@@ -589,7 +587,6 @@ export default function RelatoriosPage() {
                     </div>
                   </div>
 
-                  {/* Comparativo */}
                   <div className="pt-4 border-t">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 font-medium">Total Geral:</span>
@@ -600,14 +597,13 @@ export default function RelatoriosPage() {
               </CardContent>
             </Card>
 
-            {/* ✅ ATUALIZADO: Por Status de Reserva */}
+            {/* Por Status de Reserva */}
             <Card>
               <CardHeader>
                 <CardTitle>Por Status de Reserva</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {/* Confirmadas */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div 
@@ -619,7 +615,6 @@ export default function RelatoriosPage() {
                     <span className="font-bold">{stats.confirmada}</span>
                   </div>
                   
-                  {/* ✅ NOVO: Em Andamento */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div 
@@ -631,7 +626,6 @@ export default function RelatoriosPage() {
                     <span className="font-bold">{stats.emAndamento}</span>
                   </div>
                   
-                  {/* Pré-Reserva */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div 
@@ -644,7 +638,6 @@ export default function RelatoriosPage() {
                   </div>
                 </div>
 
-                {/* ✅ NOVO: Barra de progresso visual */}
                 <div className="mt-6 space-y-2">
                   <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
                     {stats.totalEvents > 0 && (
@@ -655,7 +648,6 @@ export default function RelatoriosPage() {
                             width: `${(stats.confirmada / stats.totalEvents) * 100}%`,
                             backgroundColor: RESERVATION_STATUS_COLORS.RESERVA_CONFIRMADA
                           }}
-                          title={`Confirmadas: ${stats.confirmada}`}
                         />
                         <div 
                           className="transition-all"
@@ -663,7 +655,6 @@ export default function RelatoriosPage() {
                             width: `${(stats.emAndamento / stats.totalEvents) * 100}%`,
                             backgroundColor: RESERVATION_STATUS_COLORS.RESERVA_EM_ANDAMENTO
                           }}
-                          title={`Em Andamento: ${stats.emAndamento}`}
                         />
                         <div 
                           className="transition-all"
@@ -671,7 +662,6 @@ export default function RelatoriosPage() {
                             width: `${(stats.preReserva / stats.totalEvents) * 100}%`,
                             backgroundColor: RESERVATION_STATUS_COLORS.PRE_RESERVA
                           }}
-                          title={`Pré-Reserva: ${stats.preReserva}`}
                         />
                       </>
                     )}
@@ -703,15 +693,15 @@ export default function RelatoriosPage() {
             </Card>
           </div>
 
-          {/* Receita por Categoria */}
+          {/* ✅ CORRIGIDO: Valor Pago por Categoria de Evento */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <PieChart className="h-5 w-5" />
-                Receita por Categoria de Evento
+                <Wallet className="h-5 w-5" />
+                Valor Pago por Categoria de Evento
               </CardTitle>
               <CardDescription>
-                Distribuição da receita recebida por categoria
+                Distribuição dos valores recebidos por categoria
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -808,12 +798,12 @@ export default function RelatoriosPage() {
             </Card>
           )}
 
-          {/* Evolução Mensal */}
+          {/* ✅ CORRIGIDO: Lucro Mensal */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
-                Evolução Mensal
+                Lucro Mensal
               </CardTitle>
               <CardDescription>
                 Eventos, receitas e despesas por mês
