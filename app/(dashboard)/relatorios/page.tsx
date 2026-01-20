@@ -422,26 +422,30 @@ export default function RelatoriosPage() {
             </Card>
 
             {/* ✅ CORRIGIDO: Resultado Líquido = Receita Recebida - Despesas */}
-            <Card className={stats.netResult >= 0 ? 'border-green-200' : 'border-red-200'}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-500">
-                  Resultado Líquido
-                </CardTitle>
-                {stats.netResult >= 0 ? (
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                ) : (
-                  <TrendingDown className="h-4 w-4 text-red-600" />
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className={`text-lg sm:text-xl font-bold ${stats.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(stats.netResult)}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Receita - Despesas
-                </p>
-              </CardContent>
-            </Card>
+            {/* ✅ CORRIGIDO: Resultado Líquido igual Receita Total */}
+<Card className={stats.netResult >= 0 ? 'border-green-200' : 'border-red-200'}>
+  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+    <CardTitle className="text-sm font-medium text-gray-500">
+      Resultado Líquido
+    </CardTitle>
+    {stats.netResult >= 0 ? (
+      <TrendingUp className="h-4 w-4 text-green-600" />
+    ) : (
+      <TrendingDown className="h-4 w-4 text-red-600" />
+    )}
+  </CardHeader>
+  <CardContent>
+    <div className={`text-lg sm:text-xl font-bold ${stats.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+      {formatCurrency(stats.totalPaid)}
+    </div>
+    <p className="text-xs text-gray-500 mt-1">
+      {formatCurrency(stats.totalPending)} pendente
+    </p>
+    <p className="text-xs text-gray-400">
+      Receita - Despesas
+    </p>
+  </CardContent>
+</Card>
           </div>
 
           {/* Cards Secundários */}
