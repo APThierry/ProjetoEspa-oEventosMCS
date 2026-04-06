@@ -81,58 +81,41 @@ export const PAYMENT_STATUS_LABELS: Record<string, string> = {
 // OPÇÕES DE CATEGORIA DE DESPESA (NOVO)
 // ===========================================
 
+// lib/constants.ts
+
+// ... outras constantes existentes ...
+
+// ============================================
+// CATEGORIAS DE DESPESAS (ATUALIZADAS)
+// ============================================
+
 export const EXPENSE_CATEGORY_OPTIONS = [
-  { value: 'ALUGUEL', label: 'Aluguel' },
-  { value: 'ENERGIA', label: 'Energia' },
-  { value: 'AGUA', label: 'Água' },
-  { value: 'INTERNET', label: 'Internet' },
-  { value: 'TELEFONE', label: 'Telefone' },
+  { value: 'COMISSAO', label: 'Comissão' },
+  { value: 'MAO_DE_OBRA', label: 'Mão de Obra' },
   { value: 'MANUTENCAO', label: 'Manutenção' },
+  { value: 'ENERGIA', label: 'Energia Elétrica' },
+  { value: 'AGUA', label: 'Água' },
+  { value: 'INTERNET', label: 'Internet/Telefone' },
   { value: 'LIMPEZA', label: 'Limpeza' },
   { value: 'SEGURANCA', label: 'Segurança' },
-  { value: 'MARKETING', label: 'Marketing' },
-  { value: 'PESSOAL', label: 'Pessoal' },
   { value: 'EQUIPAMENTOS', label: 'Equipamentos' },
-  { value: 'ALIMENTACAO', label: 'Alimentação' },
-  { value: 'TRANSPORTE', label: 'Transporte' },
-  { value: 'IMPOSTOS', label: 'Impostos' },
-  { value: 'SEGUROS', label: 'Seguros' },
+  { value: 'MARKETING', label: 'Marketing' },
   { value: 'OUTROS', label: 'Outros' },
-] as const
+] as const;
 
 export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
-  ALUGUEL: 'Aluguel',
-  ENERGIA: 'Energia',
-  AGUA: 'Água',
-  INTERNET: 'Internet',
-  TELEFONE: 'Telefone',
+  COMISSAO: 'Comissão',
+  MAO_DE_OBRA: 'Mão de Obra',
   MANUTENCAO: 'Manutenção',
+  ENERGIA: 'Energia Elétrica',
+  AGUA: 'Água',
+  INTERNET: 'Internet/Telefone',
   LIMPEZA: 'Limpeza',
   SEGURANCA: 'Segurança',
-  MARKETING: 'Marketing',
-  PESSOAL: 'Pessoal',
   EQUIPAMENTOS: 'Equipamentos',
-  ALIMENTACAO: 'Alimentação',
-  TRANSPORTE: 'Transporte',
-  IMPOSTOS: 'Impostos',
-  SEGUROS: 'Seguros',
+  MARKETING: 'Marketing',
   OUTROS: 'Outros',
-}
-
-// ===========================================
-// CORES POR CATEGORIA (NOVO)
-// ===========================================
-
-export const CATEGORY_COLORS: Record<string, string> = {
-  STAND_UP: '#8B5CF6',      // Roxo
-  TEATRAL: '#EC4899',       // Rosa
-  MUSICAL: '#F59E0B',       // Âmbar
-  FORMATURA: '#10B981',     // Verde
-  EMPRESARIAL: '#3B82F6',   // Azul
-  FEIRAS: '#6366F1',        // Índigo
-  CONGRESSO: '#14B8A6',     // Teal
-  OUTROS: '#6B7280',        // Cinza
-}
+};
 
 export const EXPENSE_CATEGORY_COLORS: Record<string, string> = {
   ALUGUEL: '#EF4444',
@@ -151,6 +134,30 @@ export const EXPENSE_CATEGORY_COLORS: Record<string, string> = {
   IMPOSTOS: '#DC2626',
   SEGUROS: '#7C3AED',
   OUTROS: '#6B7280',
+}
+
+// Categorias principais (as 3 que você pediu)
+export const MAIN_EXPENSE_CATEGORIES = [
+  { value: 'COMISSAO', label: 'Comissão', icon: '💰' },
+  { value: 'MAO_DE_OBRA', label: 'Mão de Obra', icon: '👷' },
+  { value: 'MANUTENCAO', label: 'Manutenção', icon: '🔧' },
+] as const;
+
+
+
+// ===========================================
+// CORES POR CATEGORIA (NOVO)
+// ===========================================
+
+export const CATEGORY_COLORS: Record<string, string> = {
+  STAND_UP: '#8B5CF6',      // Roxo
+  TEATRAL: '#EC4899',       // Rosa
+  MUSICAL: '#F59E0B',       // Âmbar
+  FORMATURA: '#10B981',     // Verde
+  EMPRESARIAL: '#3B82F6',   // Azul
+  FEIRAS: '#6366F1',        // Índigo
+  CONGRESSO: '#14B8A6',     // Teal
+  OUTROS: '#6B7280',        // Cinza
 }
 
 // ===========================================

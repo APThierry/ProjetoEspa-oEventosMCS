@@ -1,6 +1,7 @@
+// app/(dashboard)/despesas/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { 
   Plus, 
@@ -54,23 +56,35 @@ import {
   Calendar,
   TrendingDown,
   Building2,
-  AlertTriangle
+  AlertTriangle,
+  Upload,
+  FileText,
+  CheckCircle,
+  FileSpreadsheet,
 } from 'lucide-react'
-import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
   EXPENSE_CATEGORY_OPTIONS,
   EXPENSE_CATEGORY_LABELS,
   EXPENSE_CATEGORY_COLORS,
+  MAIN_EXPENSE_CATEGORIES,
   formatCurrency,
 } from '@/lib/constants'
 
+// ============================================
+// INTERFACES
+// ============================================
+
 interface Expense {
   id: string
+  title: string | null
   description: string
+  client: string | null
   category: string
   amount: number
   expense_date: string
+  payment_date: string | null
   event_id: string | null
   is_recurring: boolean
   notes: string | null
@@ -81,41 +95,76 @@ interface Expense {
   }
 }
 
+interface ParsedExpense {
+  title: string
+  client: string
+  amount: number
+  paymentDate: string
+  status?: string
+  selected?: boolean
+  detectedCategory?: string
+}
+
 interface Event {
   id: string
   name: string
   event_date: string
 }
 
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
+
 export default function DespesasPage() {
+  // Estados de dados
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
+  
+  // Estados de filtro
   const [searchTerm, setSearchTerm] = useState('')
   const [filterCategory, setFilterCategory] = useState<string>('all')
-  const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), 'yyyy-MM'))
+  const [filterMonth, setFilterMonth] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
   
-  // Modal states
+  // Estados de modal
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  // Form states
+  // Estados de importação
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const [parsedExpenses, setParsedExpenses] = useState<ParsedExpense[]>([])
+  const [showParsedModal, setShowParsedModal] = useState(false)
+  const [importCategory, setImportCategory] = useState('MAO_DE_OBRA')
+  const [pastedText, setPastedText] = useState('')
+
+  // Estados de formulário
   const [formData, setFormData] = useState({
+    title: '',
     description: '',
-    category: 'OUTROS',
+    client: '',
+    category: 'MAO_DE_OBRA',
     amount: '',
     expense_date: format(new Date(), 'yyyy-MM-dd'),
-    event_id: '',
+    payment_date: format(new Date(), 'yyyy-MM-dd'),
+    event_id: 'none',
     is_recurring: false,
     notes: '',
   })
 
-  // Permission states
+  // Estados de permissão
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
   const [loadingPermissions, setLoadingPermissions] = useState(true)
+  
+  // ✅ Estados para exclusão em massa
+  const [deletingAll, setDeletingAll] = useState(false)
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
 
   const supabase = createClient()
   const { toast } = useToast()
@@ -123,13 +172,20 @@ export default function DespesasPage() {
   const canCreate = userRole === 'ADMIN' || userRole === 'EDITOR'
   const canEdit = userRole === 'ADMIN' || userRole === 'EDITOR'
   const canDelete = userRole === 'ADMIN'
+  
+  // ✅ Seu user ID do Supabase
+  const SUPER_ADMIN_ID = '9821e2a2-ef72-4b3b-9b75-2e8c0e59e2c3'
 
-  // Carregar permissões
+  // ============================================
+  // CARREGAR PERMISSÕES
+  // ============================================
+
   useEffect(() => {
     const loadPermissions = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
+          setUserId(user.id)
           const { data: profile } = await supabase
             .from('user_profiles')
             .select('role')
@@ -147,24 +203,39 @@ export default function DespesasPage() {
     loadPermissions()
   }, [supabase])
 
-  // Carregar despesas
-  const loadExpenses = async () => {
+  // ============================================
+  // CARREGAR DESPESAS - ✅ CORRIGIDO TIMEZONE
+  // ============================================
+
+  const loadExpenses = useCallback(async () => {
     setLoading(true)
     try {
-      const startDate = startOfMonth(new Date(filterMonth + '-01'))
-      const endDate = endOfMonth(new Date(filterMonth + '-01'))
+      const [year, month] = filterMonth.split('-').map(Number)
+      const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`
+      const lastDay = new Date(year, month, 0).getDate()
+      const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+      
+      console.log('=== DEBUG LOAD EXPENSES ===')
+      console.log('Filtro mês:', filterMonth)
+      console.log('Data início:', startDateStr)
+      console.log('Data fim:', endDateStr)
 
       const { data, error } = await supabase
         .from('expenses')
-        .select(`
-          *,
-          event:events(id, name)
-        `)
-        .gte('expense_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('expense_date', format(endDate, 'yyyy-MM-dd'))
+        .select(`*, event:events(id, name)`)
+        .gte('expense_date', startDateStr)
+        .lte('expense_date', endDateStr)
         .order('expense_date', { ascending: false })
 
-      if (error) throw error
+      console.log('Despesas carregadas:', data?.length || 0)
+      if (error) {
+        console.error('Erro Supabase:', error)
+        throw error
+      }
+      if (data && data.length > 0) {
+        console.log('Primeira despesa:', data[0].expense_date, data[0].title)
+      }
+      
       setExpenses(data || [])
     } catch (error) {
       console.error('Erro ao carregar despesas:', error)
@@ -176,10 +247,13 @@ export default function DespesasPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filterMonth, supabase, toast])
 
-  // Carregar eventos para associar
-  const loadEvents = async () => {
+  // ============================================
+  // CARREGAR EVENTOS
+  // ============================================
+
+  const loadEvents = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('events')
@@ -192,22 +266,29 @@ export default function DespesasPage() {
     } catch (error) {
       console.error('Erro ao carregar eventos:', error)
     }
-  }
+  }, [supabase])
 
   useEffect(() => {
     loadExpenses()
     loadEvents()
-  }, [filterMonth])
+  }, [loadExpenses, loadEvents])
 
-  // Filtrar despesas
+  // ============================================
+  // FILTROS E CÁLCULOS
+  // ============================================
+
   const filteredExpenses = expenses.filter(expense => {
-    const matchesSearch = expense.description.toLowerCase().includes(searchTerm.toLowerCase())
+    const searchLower = searchTerm.toLowerCase()
+    const matchesSearch = 
+      expense.description?.toLowerCase().includes(searchLower) ||
+      expense.title?.toLowerCase().includes(searchLower) ||
+      expense.client?.toLowerCase().includes(searchLower)
     const matchesCategory = filterCategory === 'all' || expense.category === filterCategory
     return matchesSearch && matchesCategory
   })
 
-  // Calcular totais
   const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount.toString()), 0)
+  
   const expensesByCategory = EXPENSE_CATEGORY_OPTIONS.reduce((acc, cat) => {
     const total = filteredExpenses
       .filter(exp => exp.category === cat.value)
@@ -218,20 +299,70 @@ export default function DespesasPage() {
     return acc
   }, [] as { category: string; label: string; total: number }[])
 
-  // Resetar formulário
+  // ============================================
+  // FUNÇÕES AUXILIARES - ✅ CORRIGIDO TIMEZONE
+  // ============================================
+
   const resetForm = () => {
     setFormData({
+      title: '',
       description: '',
-      category: 'OUTROS',
+      client: '',
+      category: 'MAO_DE_OBRA',
       amount: '',
       expense_date: format(new Date(), 'yyyy-MM-dd'),
-      event_id: '',
+      payment_date: format(new Date(), 'yyyy-MM-dd'),
+      event_id: 'none',
       is_recurring: false,
       notes: '',
     })
   }
 
-  // Abrir modal de edição
+  const formatDate = (dateStr: string) => {
+    try {
+      const [y, m, d] = dateStr.split('-').map(Number)
+      if (y && m && d) {
+        return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`
+      }
+      return format(parseISO(dateStr), 'dd/MM/yyyy', { locale: ptBR })
+    } catch {
+      return dateStr
+    }
+  }
+
+  const getMonthLabel = (monthStr: string) => {
+    try {
+      const [year, month] = monthStr.split('-').map(Number)
+      const date = new Date(year, month - 1, 1)
+      return format(date, 'MMMM yyyy', { locale: ptBR })
+    } catch {
+      return monthStr
+    }
+  }
+
+  // ✅ MELHORADO: Gerar opções de mês (3 anos para trás + 1 ano para frente)
+  const currentYear = new Date().getFullYear()
+  const currentMonth = new Date().getMonth() + 1
+
+  const monthOptions: { value: string; label: string; year: number; isCurrentMonth: boolean }[] = []
+  
+  for (let y = currentYear - 3; y <= currentYear + 1; y++) {
+    for (let m = 1; m <= 12; m++) {
+      const value = `${y}-${String(m).padStart(2, '0')}`
+      const date = new Date(y, m - 1, 1)
+      monthOptions.push({
+        value,
+        label: format(date, 'MMMM yyyy', { locale: ptBR }),
+        year: y,
+        isCurrentMonth: y === currentYear && m === currentMonth,
+      })
+    }
+  }
+
+  // ============================================
+  // HANDLERS - CRUD
+  // ============================================
+
   const handleEdit = (expense: Expense) => {
     if (!canEdit) {
       toast({
@@ -242,18 +373,20 @@ export default function DespesasPage() {
       return
     }
     setFormData({
+      title: expense.title || '',
       description: expense.description,
+      client: expense.client || '',
       category: expense.category,
       amount: expense.amount.toString(),
       expense_date: expense.expense_date,
-      event_id: expense.event_id || '',
+      payment_date: expense.payment_date || expense.expense_date,
+      event_id: expense.event_id || 'none',
       is_recurring: expense.is_recurring,
       notes: expense.notes || '',
     })
     setEditingExpense(expense)
   }
 
-  // Salvar despesa
   const handleSave = async () => {
     if (!formData.description || !formData.amount || !formData.expense_date) {
       toast({
@@ -277,11 +410,14 @@ export default function DespesasPage() {
     setSaving(true)
     try {
       const payload = {
+        title: formData.title || null,
         description: formData.description,
+        client: formData.client || null,
         category: formData.category,
         amount: amount,
         expense_date: formData.expense_date,
-        event_id: formData.event_id || null,
+        payment_date: formData.payment_date || null,
+        event_id: formData.event_id === 'none' ? null : formData.event_id,
         is_recurring: formData.is_recurring,
         notes: formData.notes || null,
       }
@@ -322,7 +458,6 @@ export default function DespesasPage() {
     }
   }
 
-  // Excluir despesa
   const handleDelete = async () => {
     if (!deleteId) return
 
@@ -354,33 +489,321 @@ export default function DespesasPage() {
     }
   }
 
-  const formatDate = (dateStr: string) => {
+  // ============================================
+  // ✅ EXCLUIR TODAS AS DESPESAS DO MÊS
+  // ============================================
+
+  const handleDeleteAllMonth = async () => {
+    if (userId !== SUPER_ADMIN_ID) return
+
+    setDeletingAll(true)
     try {
-      return format(parseISO(dateStr), 'dd/MM/yyyy', { locale: ptBR })
-    } catch {
-      return dateStr
+      const [year, month] = filterMonth.split('-').map(Number)
+      const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`
+      const lastDay = new Date(year, month, 0).getDate()
+      const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+      console.log(`🗑️ Excluindo TODAS as despesas de ${startDateStr} a ${endDateStr}`)
+
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .gte('expense_date', startDateStr)
+        .lte('expense_date', endDateStr)
+
+      if (error) throw error
+
+      toast({
+        title: '🗑️ Despesas excluídas',
+        description: `Todas as despesas de ${getMonthLabel(filterMonth)} foram removidas.`,
+      })
+
+      setShowDeleteAllConfirm(false)
+      loadExpenses()
+    } catch (error: any) {
+      console.error('Erro ao excluir todas:', error)
+      toast({
+        title: 'Erro',
+        description: error.message || 'Não foi possível excluir as despesas.',
+        variant: 'destructive',
+      })
+    } finally {
+      setDeletingAll(false)
     }
   }
 
-  const getMonthLabel = (monthStr: string) => {
+  // ============================================
+  // HANDLERS - IMPORTAÇÃO EXCEL
+  // ============================================
+
+  const handleExcelUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const fileName = file.name.toLowerCase()
+    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
+      toast({
+        title: 'Erro',
+        description: 'Apenas arquivos Excel (.xlsx, .xls) são aceitos.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setUploadingFile(true)
     try {
-      const [year, month] = monthStr.split('-')
-      const date = new Date(parseInt(year), parseInt(month) - 1)
-      return format(date, 'MMMM yyyy', { locale: ptBR })
-    } catch {
-      return monthStr
+      const formDataUpload = new FormData()
+      formDataUpload.append('file', file)
+
+      const response = await fetch('/api/expenses/parse-excel', {
+        method: 'POST',
+        body: formDataUpload,
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Erro ao processar Excel')
+      }
+
+      const expensesWithSelection = data.expenses.map((exp: ParsedExpense & { category?: string }) => ({
+        ...exp,
+        selected: true,
+        detectedCategory: exp.category || importCategory,
+      }))
+
+      setParsedExpenses(expensesWithSelection)
+      setShowParsedModal(true)
+      
+      toast({
+        title: 'Excel processado!',
+        description: `${data.totalFound} despesa(s) encontrada(s) na planilha "${data.sheetName}".`,
+      })
+    } catch (error: any) {
+      console.error('Erro ao processar Excel:', error)
+      toast({
+        title: 'Erro ao processar Excel',
+        description: error.message || 'Verifique se o arquivo está no formato correto.',
+        variant: 'destructive',
+      })
+    } finally {
+      setUploadingFile(false)
+      event.target.value = ''
     }
   }
 
-  // Gerar opções de meses (últimos 12 meses)
-  const monthOptions = Array.from({ length: 12 }, (_, i) => {
-    const date = new Date()
-    date.setMonth(date.getMonth() - i)
-    return {
-      value: format(date, 'yyyy-MM'),
-      label: format(date, 'MMMM yyyy', { locale: ptBR })
+  // ============================================
+  // HANDLERS - IMPORTAÇÃO TEXTO
+  // ============================================
+
+  const handleParseText = async () => {
+    if (!pastedText.trim()) {
+      toast({
+        title: 'Erro',
+        description: 'Cole o texto primeiro.',
+        variant: 'destructive',
+      })
+      return
     }
-  })
+
+    setUploadingFile(true)
+    try {
+      const expenses = parseTextToExpenses(pastedText)
+
+      if (expenses.length === 0) {
+        toast({
+          title: 'Nenhuma despesa encontrada',
+          description: 'Verifique se o formato do texto está correto.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      const expensesWithSelection = expenses.map(exp => ({
+        ...exp,
+        selected: true,
+        detectedCategory: importCategory,
+      }))
+
+      setParsedExpenses(expensesWithSelection)
+      setShowParsedModal(true)
+      setPastedText('')
+      
+      toast({
+        title: 'Texto processado!',
+        description: `${expenses.length} despesa(s) encontrada(s).`,
+      })
+    } catch (error: any) {
+      console.error('Erro ao processar texto:', error)
+      toast({
+        title: 'Erro ao processar texto',
+        description: error.message || 'Verifique o formato do texto.',
+        variant: 'destructive',
+      })
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
+  const parseTextToExpenses = (text: string): ParsedExpense[] => {
+    const expenses: ParsedExpense[] = []
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l)
+    
+    for (const line of lines) {
+      const lowerLine = line.toLowerCase()
+      if (
+        lowerLine.includes('título') ||
+        lowerLine.includes('cliente') ||
+        lowerLine.includes('total:') ||
+        lowerLine.includes('vencido:') ||
+        lowerLine.includes('a vencer:') ||
+        lowerLine.includes('classificação') ||
+        lowerLine.includes('despesas >') ||
+        (lowerLine.includes('valor') && lowerLine.includes('emissão'))
+      ) {
+        continue
+      }
+
+      const match = line.match(/^(\d{5})\s+(.+)/i)
+      if (!match) continue
+      
+      const codigo = match[1]
+      const resto = match[2]
+      
+      const clienteMatch = resto.match(/^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ\s.]+?)(?=\s*R?\$)/i)
+      if (!clienteMatch) continue
+      
+      const cliente = clienteMatch[1].trim()
+      
+      const valores = line.match(/R?\$([\d.,]+)/g)
+      const datas = line.match(/\d{2}\/\d{2}\/\d{4}/g)
+      
+      if (!valores || valores.length === 0) continue
+      
+      const valorStr = valores.length > 1 ? valores[valores.length - 2] : valores[0]
+      const amount = parseFloat(
+        valorStr.replace('R$', '').replace(/\./g, '').replace(',', '.')
+      )
+      
+      if (amount <= 0) continue
+      
+      let paymentDate = ''
+      const now = new Date()
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      
+      if (datas && datas.length >= 3) {
+        const [dia, mes, ano] = datas[2].split('/')
+        paymentDate = `${ano}-${mes}-${dia}`
+      } else if (datas && datas.length > 0) {
+        const [dia, mes, ano] = datas[datas.length - 1].split('/')
+        paymentDate = `${ano}-${mes}-${dia}`
+      } else {
+        paymentDate = todayStr
+      }
+      
+      expenses.push({
+        title: codigo,
+        client: cliente.substring(0, 100),
+        amount,
+        paymentDate,
+        status: lowerLine.includes('quitado') ? 'Quitado' : 'Pendente',
+      })
+    }
+    
+    return expenses.filter((exp, index, self) =>
+      index === self.findIndex(e => e.title === exp.title)
+    )
+  }
+
+  // ============================================
+  // HANDLERS - IMPORTAÇÃO FINAL
+  // ============================================
+
+  const handleImportExpenses = async () => {
+    const selectedExpenses = parsedExpenses.filter(exp => exp.selected)
+    
+    if (selectedExpenses.length === 0) {
+      toast({
+        title: 'Nenhuma despesa selecionada',
+        description: 'Selecione pelo menos uma despesa para importar.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSaving(true)
+    try {
+      const payload = selectedExpenses.map(exp => ({
+        title: exp.title,
+        description: `Pagamento - ${exp.client}`,
+        client: exp.client,
+        category: exp.detectedCategory || importCategory,
+        amount: exp.amount,
+        expense_date: exp.paymentDate,
+        payment_date: exp.paymentDate,
+        notes: `Importado do Excel. Status: ${exp.status || 'N/A'}`,
+      }))
+
+      console.log('Payload para inserção:', payload)
+      console.log('Primeira data:', payload[0]?.expense_date)
+
+      const { data, error } = await supabase
+        .from('expenses')
+        .insert(payload)
+        .select()
+
+      if (error) {
+        console.error('Erro do Supabase:', error)
+        throw error
+      }
+
+      console.log('Despesas inseridas:', data?.length)
+
+      toast({
+        title: '✅ Despesas importadas!',
+        description: `${selectedExpenses.length} despesa(s) adicionada(s).`,
+      })
+
+      setShowParsedModal(false)
+      setParsedExpenses([])
+      setShowCreateModal(false)
+      
+      if (selectedExpenses.length > 0 && selectedExpenses[0].paymentDate) {
+        const dataImportada = selectedExpenses[0].paymentDate
+        const mesAno = dataImportada.substring(0, 7)
+        console.log('Mudando filtro para:', mesAno)
+        setFilterMonth(mesAno)
+      }
+      
+      setTimeout(() => loadExpenses(), 100)
+
+    } catch (error: any) {
+      console.error('Erro ao importar:', error)
+      toast({
+        title: 'Erro ao importar',
+        description: error.message || 'Não foi possível importar as despesas.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const toggleExpenseSelection = (index: number) => {
+    setParsedExpenses(prev => 
+      prev.map((exp, i) => 
+        i === index ? { ...exp, selected: !exp.selected } : exp
+      )
+    )
+  }
+
+  const toggleAllExpenses = (selected: boolean) => {
+    setParsedExpenses(prev => prev.map(exp => ({ ...exp, selected })))
+  }
+
+  // ============================================
+  // RENDER - LOADING
+  // ============================================
 
   if (loadingPermissions) {
     return (
@@ -390,25 +813,38 @@ export default function DespesasPage() {
     )
   }
 
+  // ============================================
+  // RENDER - PRINCIPAL
+  // ============================================
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Despesas</h1>
-          <p className="text-gray-500">
-            Gerencie as despesas do espaço de eventos
-          </p>
+          <p className="text-gray-500">Gerencie as despesas do espaço de eventos</p>
         </div>
-        {canCreate && (
-          <Button onClick={() => {
-            resetForm()
-            setShowCreateModal(true)
-          }}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nova Despesa
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* ✅ Botão Excluir Todas - SÓ APARECE PARA SUPER_ADMIN */}
+          {userId === SUPER_ADMIN_ID && expenses.length > 0 && (
+            <Button 
+              variant="destructive"
+              size="sm"
+              onClick={() => setShowDeleteAllConfirm(true)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir Todas ({expenses.length})
+            </Button>
+          )}
+          {canCreate && (
+            <Button onClick={() => { resetForm(); setShowCreateModal(true) }}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nova Despesa
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Aviso para visualizadores */}
@@ -427,26 +863,18 @@ export default function DespesasPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              Total do Mês
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">Total do Mês</CardTitle>
             <TrendingDown className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600">
-              {formatCurrency(totalExpenses)}
-            </div>
-            <p className="text-xs text-gray-500 mt-1 capitalize">
-              {getMonthLabel(filterMonth)}
-            </p>
+            <div className="text-3xl font-bold text-red-600">{formatCurrency(totalExpenses)}</div>
+            <p className="text-xs text-gray-500 mt-1 capitalize">{getMonthLabel(filterMonth)}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              Quantidade
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">Quantidade</CardTitle>
             <Receipt className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
@@ -457,9 +885,7 @@ export default function DespesasPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              Categorias
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">Categorias</CardTitle>
             <Building2 className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
@@ -510,7 +936,7 @@ export default function DespesasPage() {
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Buscar por descrição..."
+                placeholder="Buscar..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -529,16 +955,32 @@ export default function DespesasPage() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* ✅ Seletor de mês com separadores de ano */}
             <Select value={filterMonth} onValueChange={setFilterMonth}>
               <SelectTrigger>
                 <SelectValue placeholder="Mês" />
               </SelectTrigger>
-              <SelectContent>
-                {monthOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <span className="capitalize">{option.label}</span>
-                  </SelectItem>
-                ))}
+              <SelectContent className="max-h-[300px]">
+                {monthOptions.map((option, idx) => {
+                  const showYearHeader = idx === 0 || 
+                    option.year !== monthOptions[idx - 1]?.year
+
+                  return (
+                    <div key={option.value}>
+                      {showYearHeader && (
+                        <div className="px-2 py-1.5 text-xs font-bold text-gray-400 bg-gray-50 sticky top-0 border-b">
+                          ── {option.year} ──
+                        </div>
+                      )}
+                      <SelectItem value={option.value}>
+                        <span className={`capitalize ${option.isCurrentMonth ? 'font-bold text-blue-600' : ''}`}>
+                          {option.label}
+                        </span>
+                      </SelectItem>
+                    </div>
+                  )
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -549,9 +991,7 @@ export default function DespesasPage() {
       <Card>
         <CardHeader>
           <CardTitle>Lista de Despesas</CardTitle>
-          <CardDescription>
-            {filteredExpenses.length} despesa(s) encontrada(s)
-          </CardDescription>
+          <CardDescription>{filteredExpenses.length} despesa(s) encontrada(s)</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -566,10 +1006,7 @@ export default function DespesasPage() {
                 <Button 
                   variant="outline" 
                   className="mt-4"
-                  onClick={() => {
-                    resetForm()
-                    setShowCreateModal(true)
-                  }}
+                  onClick={() => { resetForm(); setShowCreateModal(true) }}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Adicionar despesa
@@ -581,49 +1018,31 @@ export default function DespesasPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Descrição</TableHead>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Cliente</TableHead>
                     <TableHead>Categoria</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Evento</TableHead>
+                    <TableHead>Data Pgto</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
-                    {(canEdit || canDelete) && (
-                      <TableHead className="text-right">Ações</TableHead>
-                    )}
+                    {(canEdit || canDelete) && <TableHead className="text-right">Ações</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredExpenses.map((expense) => (
                     <TableRow key={expense.id}>
-                      <TableCell className="font-medium">
-                        {expense.description}
-                        {expense.is_recurring && (
-                          <Badge variant="outline" className="ml-2 text-xs">
-                            Recorrente
-                          </Badge>
-                        )}
-                      </TableCell>
+                      <TableCell className="font-medium">{expense.title || expense.description}</TableCell>
+                      <TableCell>{expense.client || '-'}</TableCell>
                       <TableCell>
                         <Badge 
                           style={{ 
                             backgroundColor: `${EXPENSE_CATEGORY_COLORS[expense.category]}20`,
                             color: EXPENSE_CATEGORY_COLORS[expense.category],
-                            borderColor: EXPENSE_CATEGORY_COLORS[expense.category]
                           }}
                           variant="outline"
                         >
                           {EXPENSE_CATEGORY_LABELS[expense.category] || expense.category}
                         </Badge>
                       </TableCell>
-                      <TableCell>{formatDate(expense.expense_date)}</TableCell>
-                      <TableCell>
-                        {expense.event?.name ? (
-                          <span className="text-sm text-blue-600">
-                            {expense.event.name}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-400">Geral</span>
-                        )}
-                      </TableCell>
+                      <TableCell>{formatDate(expense.payment_date || expense.expense_date)}</TableCell>
                       <TableCell className="text-right font-medium text-red-600">
                         {formatCurrency(parseFloat(expense.amount.toString()))}
                       </TableCell>
@@ -631,19 +1050,15 @@ export default function DespesasPage() {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             {canEdit && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEdit(expense)}
-                              >
+                              <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)}>
                                 <Edit className="h-4 w-4" />
                               </Button>
                             )}
                             {canDelete && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setDeleteId(expense.id)}
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => setDeleteId(expense.id)} 
                                 className="text-red-600 hover:text-red-700"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -661,7 +1076,9 @@ export default function DespesasPage() {
         </CardContent>
       </Card>
 
-      {/* Modal de Criar/Editar */}
+      {/* ============================================ */}
+      {/* MODAL: CRIAR/EDITAR DESPESA */}
+      {/* ============================================ */}
       <Dialog 
         open={showCreateModal || !!editingExpense} 
         onOpenChange={(open) => {
@@ -672,133 +1089,244 @@ export default function DespesasPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingExpense ? 'Editar Despesa' : 'Nova Despesa'}
-            </DialogTitle>
+            <DialogTitle>{editingExpense ? 'Editar Despesa' : 'Nova Despesa'}</DialogTitle>
             <DialogDescription>
-              {editingExpense 
-                ? 'Faça as alterações necessárias.'
-                : 'Preencha os dados da despesa.'}
+              {editingExpense ? 'Faça as alterações necessárias.' : 'Preencha os dados ou importe do Excel.'}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {/* Descrição */}
-            <div className="space-y-2">
-              <Label htmlFor="description">Descrição *</Label>
-              <Input
-                id="description"
-                placeholder="Ex: Conta de energia elétrica"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                disabled={saving}
-              />
-            </div>
+          <Tabs defaultValue="manual" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="manual">Preencher Manual</TabsTrigger>
+              <TabsTrigger value="import" disabled={!!editingExpense}>
+                <Upload className="h-4 w-4 mr-2" />
+                Importar Excel
+              </TabsTrigger>
+            </TabsList>
 
-            {/* Valor e Data */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* Tab: Preencher Manual */}
+            <TabsContent value="manual" className="space-y-4 mt-4">
               <div className="space-y-2">
-                <Label htmlFor="amount">Valor *</Label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                    className="pl-10"
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    disabled={saving}
-                  />
+                <Label>Categoria *</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {MAIN_EXPENSE_CATEGORIES.map((cat) => (
+                    <Button
+                      key={cat.value}
+                      type="button"
+                      variant={formData.category === cat.value ? 'default' : 'outline'}
+                      className="h-auto py-3 flex flex-col gap-1"
+                      onClick={() => setFormData({ ...formData, category: cat.value })}
+                      disabled={saving}
+                    >
+                      <span className="text-lg">{cat.icon}</span>
+                      <span className="text-xs">{cat.label}</span>
+                    </Button>
+                  ))}
+                </div>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => setFormData({ ...formData, category: value })}
+                  disabled={saving}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Ou selecione outra" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXPENSE_CATEGORY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Título (código)</Label>
+                <Input
+                  placeholder="Ex: 28795"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cliente</Label>
+                <Input
+                  placeholder="Ex: DAYANE CRISTINA DE P. VENTURA"
+                  value={formData.client}
+                  onChange={(e) => setFormData({ ...formData, client: e.target.value })}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Descrição *</Label>
+                <Input
+                  placeholder="Ex: Pagamento de comissão"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Valor Pago *</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0,00"
+                      className="pl-10"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Data de Pagamento *</Label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      type="date"
+                      className="pl-10"
+                      value={formData.payment_date}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        payment_date: e.target.value,
+                        expense_date: e.target.value 
+                      })}
+                      disabled={saving}
+                    />
+                  </div>
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="expense_date">Data *</Label>
+                <Label>Observações</Label>
+                <Textarea
+                  placeholder="Informações adicionais..."
+                  rows={2}
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  disabled={saving}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Tab: Importar Excel */}
+            <TabsContent value="import" className="mt-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Categoria padrão (se não detectada no Excel)</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {MAIN_EXPENSE_CATEGORIES.map((cat) => (
+                      <Button
+                        key={cat.value}
+                        type="button"
+                        variant={importCategory === cat.value ? 'default' : 'outline'}
+                        className="h-auto py-3 flex flex-col gap-1"
+                        onClick={() => setImportCategory(cat.value)}
+                      >
+                        <span className="text-lg">{cat.icon}</span>
+                        <span className="text-xs">{cat.label}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="font-medium text-green-800 mb-2 flex items-center gap-2">
+                    <FileSpreadsheet className="h-5 w-5" />
+                    Importar do Excel (Recomendado)
+                  </p>
+                  <p className="text-sm text-green-700 mb-4">
+                    O sistema detecta automaticamente Comissão, Mão de Obra e Manutenção.
+                  </p>
+                  
+                  <div className="border-2 border-dashed border-green-300 rounded-lg p-6 text-center hover:border-green-500 transition-colors bg-white">
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleExcelUpload}
+                      className="hidden"
+                      id="excel-upload"
+                      disabled={uploadingFile}
+                    />
+                    <label 
+                      htmlFor="excel-upload" 
+                      className="cursor-pointer flex flex-col items-center gap-3"
+                    >
+                      {uploadingFile ? (
+                        <>
+                          <Loader2 className="h-10 w-10 text-green-600 animate-spin" />
+                          <p className="text-green-600 font-medium">Processando...</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
+                            <FileSpreadsheet className="h-6 w-6 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-700 font-medium">
+                              Clique para selecionar o arquivo Excel
+                            </p>
+                            <p className="text-sm text-gray-400 mt-1">
+                              Formatos: .xlsx, .xls
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="expense_date"
-                    type="date"
-                    className="pl-10"
-                    value={formData.expense_date}
-                    onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-                    disabled={saving}
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white px-2 text-gray-500">ou cole o texto</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-gray-500">Colar texto (alternativa):</Label>
+                  <Textarea
+                    placeholder="Cole aqui as linhas copiadas do Excel..."
+                    rows={5}
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                    className="font-mono text-xs"
                   />
+                  <Button 
+                    onClick={handleParseText} 
+                    disabled={!pastedText.trim() || uploadingFile}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Processar Texto
+                  </Button>
                 </div>
               </div>
-            </div>
-
-            {/* Categoria */}
-            <div className="space-y-2">
-              <Label>Categoria *</Label>
-              <Select
-                value={formData.category}
-                onValueChange={(value) => setFormData({ ...formData, category: value })}
-                disabled={saving}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EXPENSE_CATEGORY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Evento relacionado */}
-            <div className="space-y-2">
-              <Label>Evento Relacionado (opcional)</Label>
-              <Select
-                value={formData.event_id}
-                onValueChange={(value) => setFormData({ ...formData, event_id: value })}
-                disabled={saving}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um evento (opcional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Nenhum (Despesa Geral)</SelectItem>
-                  {events.map((event) => (
-                    <SelectItem key={event.id} value={event.id}>
-                      {event.name} - {formatDate(event.event_date)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">
-                Associe a despesa a um evento específico ou deixe como despesa geral
-              </p>
-            </div>
-
-            {/* Observações */}
-            <div className="space-y-2">
-              <Label htmlFor="notes">Observações</Label>
-              <Textarea
-                id="notes"
-                placeholder="Informações adicionais..."
-                rows={2}
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                disabled={saving}
-              />
-            </div>
-          </div>
+            </TabsContent>
+          </Tabs>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
+            <Button 
+              variant="outline" 
+              onClick={() => { 
                 setShowCreateModal(false)
                 setEditingExpense(null)
-                resetForm()
+                resetForm() 
               }}
               disabled={saving}
             >
@@ -806,10 +1334,7 @@ export default function DespesasPage() {
             </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</>
               ) : editingExpense ? (
                 'Salvar Alterações'
               ) : (
@@ -820,13 +1345,140 @@ export default function DespesasPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog de Confirmação de Exclusão */}
+      {/* ============================================ */}
+      {/* MODAL: PREVIEW DAS DESPESAS IMPORTADAS */}
+      {/* ============================================ */}
+      <Dialog open={showParsedModal} onOpenChange={setShowParsedModal}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Despesas Encontradas
+            </DialogTitle>
+            <DialogDescription>
+              {parsedExpenses.length} despesa(s) encontrada(s). Selecione as que deseja importar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                <span className="font-medium text-blue-600">
+                  {parsedExpenses.filter(e => e.selected).length}
+                </span> de {parsedExpenses.length} selecionada(s)
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => toggleAllExpenses(true)}>
+                  Selecionar Todas
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => toggleAllExpenses(false)}>
+                  Desmarcar Todas
+                </Button>
+              </div>
+            </div>
+
+            <div className="border rounded-lg overflow-hidden max-h-[400px] overflow-y-auto">
+              <Table>
+                <TableHeader className="sticky top-0 bg-white">
+                  <TableRow>
+                    <TableHead className="w-12"></TableHead>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {parsedExpenses.map((expense, index) => (
+                    <TableRow 
+                      key={index} 
+                      className={`cursor-pointer transition-colors ${
+                        expense.selected ? 'bg-blue-50 hover:bg-blue-100' : 'opacity-50 hover:opacity-75'
+                      }`}
+                      onClick={() => toggleExpenseSelection(index)}
+                    >
+                      <TableCell>
+                        {expense.selected ? (
+                          <CheckCircle className="h-5 w-5 text-blue-600" />
+                        ) : (
+                          <div className="h-5 w-5 rounded-full border-2 border-gray-300" />
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{expense.title}</TableCell>
+                      <TableCell className="max-w-[200px] truncate" title={expense.client}>
+                        {expense.client}
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant="outline"
+                          style={{ 
+                            backgroundColor: `${EXPENSE_CATEGORY_COLORS[expense.detectedCategory || importCategory]}20`,
+                            color: EXPENSE_CATEGORY_COLORS[expense.detectedCategory || importCategory],
+                          }}
+                        >
+                          {EXPENSE_CATEGORY_LABELS[expense.detectedCategory || importCategory]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(expense.paymentDate)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(expense.amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+              <span className="font-medium">Total Selecionado:</span>
+              <span className="text-2xl font-bold text-red-600">
+                {formatCurrency(
+                  parsedExpenses
+                    .filter(e => e.selected)
+                    .reduce((sum, e) => sum + e.amount, 0)
+                )}
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => { 
+                setShowParsedModal(false)
+                setParsedExpenses([]) 
+              }}
+              disabled={saving}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleImportExpenses} 
+              disabled={saving || parsedExpenses.filter(e => e.selected).length === 0}
+            >
+              {saving ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importando...</>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Importar {parsedExpenses.filter(e => e.selected).length} despesa(s)
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================ */}
+      {/* DIALOG: CONFIRMAR EXCLUSÃO INDIVIDUAL */}
+      {/* ============================================ */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir despesa?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.
+              Esta ação não pode ser desfeita. A despesa será permanentemente removida.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -836,7 +1488,61 @@ export default function DespesasPage() {
               disabled={deleting}
               className="bg-red-600 hover:bg-red-700"
             >
-              {deleting ? 'Excluindo...' : 'Excluir'}
+              {deleting ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo...</>
+              ) : (
+                'Excluir'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ============================================ */}
+      {/* ✅ DIALOG: CONFIRMAR EXCLUSÃO EM MASSA */}
+      {/* ============================================ */}
+      <AlertDialog open={showDeleteAllConfirm} onOpenChange={setShowDeleteAllConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Excluir TODAS as despesas?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Você está prestes a excluir <strong className="text-red-600">{expenses.length} despesa(s)</strong> do 
+                  mês de <strong className="capitalize">{getMonthLabel(filterMonth)}</strong>.
+                </p>
+                <p className="text-red-600 font-medium">
+                  ⚠️ Esta ação é IRREVERSÍVEL! Todas as despesas deste mês serão permanentemente removidas.
+                </p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-2">
+                  <p className="text-sm text-red-800">
+                    Total a ser excluído: <strong>{formatCurrency(totalExpenses)}</strong>
+                  </p>
+                  <p className="text-sm text-red-800">
+                    Quantidade: <strong>{expenses.length} despesas</strong>
+                  </p>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAll}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAllMonth}
+              disabled={deletingAll}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deletingAll ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo todas...</>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Sim, excluir {expenses.length} despesas
+                </>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
