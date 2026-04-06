@@ -173,7 +173,6 @@ export default function DespesasPage() {
   const canEdit = userRole === 'ADMIN' || userRole === 'EDITOR'
   const canDelete = userRole === 'ADMIN'
   
-  // ✅ Seu user ID do Supabase
   const SUPER_ADMIN_ID = '9821e2a2-ef72-4b3b-9b75-2e8c0e59e2c3'
 
   // ============================================
@@ -204,7 +203,7 @@ export default function DespesasPage() {
   }, [supabase])
 
   // ============================================
-  // CARREGAR DESPESAS - ✅ CORRIGIDO TIMEZONE
+  // CARREGAR DESPESAS
   // ============================================
 
   const loadExpenses = useCallback(async () => {
@@ -214,11 +213,6 @@ export default function DespesasPage() {
       const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`
       const lastDay = new Date(year, month, 0).getDate()
       const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-      
-      console.log('=== DEBUG LOAD EXPENSES ===')
-      console.log('Filtro mês:', filterMonth)
-      console.log('Data início:', startDateStr)
-      console.log('Data fim:', endDateStr)
 
       const { data, error } = await supabase
         .from('expenses')
@@ -227,15 +221,7 @@ export default function DespesasPage() {
         .lte('expense_date', endDateStr)
         .order('expense_date', { ascending: false })
 
-      console.log('Despesas carregadas:', data?.length || 0)
-      if (error) {
-        console.error('Erro Supabase:', error)
-        throw error
-      }
-      if (data && data.length > 0) {
-        console.log('Primeira despesa:', data[0].expense_date, data[0].title)
-      }
-      
+      if (error) throw error
       setExpenses(data || [])
     } catch (error) {
       console.error('Erro ao carregar despesas:', error)
@@ -300,7 +286,7 @@ export default function DespesasPage() {
   }, [] as { category: string; label: string; total: number }[])
 
   // ============================================
-  // FUNÇÕES AUXILIARES - ✅ CORRIGIDO TIMEZONE
+  // FUNÇÕES AUXILIARES
   // ============================================
 
   const resetForm = () => {
@@ -340,7 +326,6 @@ export default function DespesasPage() {
     }
   }
 
-  // ✅ MELHORADO: Gerar opções de mês (3 anos para trás + 1 ano para frente)
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
 
@@ -502,8 +487,6 @@ export default function DespesasPage() {
       const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`
       const lastDay = new Date(year, month, 0).getDate()
       const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-
-      console.log(`🗑️ Excluindo TODAS as despesas de ${startDateStr} a ${endDateStr}`)
 
       const { error } = await supabase
         .from('expenses')
@@ -744,20 +727,12 @@ export default function DespesasPage() {
         notes: `Importado do Excel. Status: ${exp.status || 'N/A'}`,
       }))
 
-      console.log('Payload para inserção:', payload)
-      console.log('Primeira data:', payload[0]?.expense_date)
-
       const { data, error } = await supabase
         .from('expenses')
         .insert(payload)
         .select()
 
-      if (error) {
-        console.error('Erro do Supabase:', error)
-        throw error
-      }
-
-      console.log('Despesas inseridas:', data?.length)
+      if (error) throw error
 
       toast({
         title: '✅ Despesas importadas!',
@@ -771,7 +746,6 @@ export default function DespesasPage() {
       if (selectedExpenses.length > 0 && selectedExpenses[0].paymentDate) {
         const dataImportada = selectedExpenses[0].paymentDate
         const mesAno = dataImportada.substring(0, 7)
-        console.log('Mudando filtro para:', mesAno)
         setFilterMonth(mesAno)
       }
       
@@ -826,7 +800,6 @@ export default function DespesasPage() {
           <p className="text-gray-500">Gerencie as despesas do espaço de eventos</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* ✅ Botão Excluir Todas - SÓ APARECE PARA SUPER_ADMIN */}
           {userId === SUPER_ADMIN_ID && expenses.length > 0 && (
             <Button 
               variant="destructive"
@@ -942,6 +915,8 @@ export default function DespesasPage() {
                 className="pl-10"
               />
             </div>
+
+            {/* ✅ ATUALIZADO: Apenas 3 categorias */}
             <Select value={filterCategory} onValueChange={setFilterCategory}>
               <SelectTrigger>
                 <SelectValue placeholder="Categoria" />
@@ -956,7 +931,6 @@ export default function DespesasPage() {
               </SelectContent>
             </Select>
 
-            {/* ✅ Seletor de mês com separadores de ano */}
             <Select value={filterMonth} onValueChange={setFilterMonth}>
               <SelectTrigger>
                 <SelectValue placeholder="Mês" />
@@ -1034,8 +1008,8 @@ export default function DespesasPage() {
                       <TableCell>
                         <Badge 
                           style={{ 
-                            backgroundColor: `${EXPENSE_CATEGORY_COLORS[expense.category]}20`,
-                            color: EXPENSE_CATEGORY_COLORS[expense.category],
+                            backgroundColor: `${EXPENSE_CATEGORY_COLORS[expense.category] || '#6B7280'}20`,
+                            color: EXPENSE_CATEGORY_COLORS[expense.category] || '#6B7280',
                           }}
                           variant="outline"
                         >
@@ -1077,7 +1051,8 @@ export default function DespesasPage() {
       </Card>
 
       {/* ============================================ */}
-      {/* MODAL: CRIAR/EDITAR DESPESA */}
+      {/* MODAL: CRIAR/EDITAR DESPESA                  */}
+      {/* ✅ ATUALIZADO: Removido Select duplicado      */}
       {/* ============================================ */}
       <Dialog 
         open={showCreateModal || !!editingExpense} 
@@ -1108,6 +1083,8 @@ export default function DespesasPage() {
 
             {/* Tab: Preencher Manual */}
             <TabsContent value="manual" className="space-y-4 mt-4">
+              
+              {/* ✅ SIMPLIFICADO: Apenas 3 botões de categoria (sem dropdown extra) */}
               <div className="space-y-2">
                 <Label>Categoria *</Label>
                 <div className="grid grid-cols-3 gap-2">
@@ -1116,31 +1093,28 @@ export default function DespesasPage() {
                       key={cat.value}
                       type="button"
                       variant={formData.category === cat.value ? 'default' : 'outline'}
-                      className="h-auto py-3 flex flex-col gap-1"
+                      className={`h-auto py-3 flex flex-col gap-1 ${
+                        formData.category === cat.value 
+                          ? 'ring-2 ring-offset-1' 
+                          : ''
+                      }`}
+                      style={
+                        formData.category === cat.value 
+                          ? { 
+                              backgroundColor: EXPENSE_CATEGORY_COLORS[cat.value],
+                              borderColor: EXPENSE_CATEGORY_COLORS[cat.value],
+                              color: 'white',
+                            } 
+                          : undefined
+                      }
                       onClick={() => setFormData({ ...formData, category: cat.value })}
                       disabled={saving}
                     >
                       <span className="text-lg">{cat.icon}</span>
-                      <span className="text-xs">{cat.label}</span>
+                      <span className="text-xs font-medium">{cat.label}</span>
                     </Button>
                   ))}
                 </div>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value })}
-                  disabled={saving}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Ou selecione outra" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EXPENSE_CATEGORY_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
               <div className="space-y-2">
@@ -1232,11 +1206,24 @@ export default function DespesasPage() {
                         key={cat.value}
                         type="button"
                         variant={importCategory === cat.value ? 'default' : 'outline'}
-                        className="h-auto py-3 flex flex-col gap-1"
+                        className={`h-auto py-3 flex flex-col gap-1 ${
+                          importCategory === cat.value 
+                            ? 'ring-2 ring-offset-1' 
+                            : ''
+                        }`}
+                                                style={
+                          importCategory === cat.value 
+                            ? { 
+                                backgroundColor: EXPENSE_CATEGORY_COLORS[cat.value],
+                                borderColor: EXPENSE_CATEGORY_COLORS[cat.value],
+                                color: 'white',
+                              } 
+                            : undefined
+                        }
                         onClick={() => setImportCategory(cat.value)}
                       >
                         <span className="text-lg">{cat.icon}</span>
-                        <span className="text-xs">{cat.label}</span>
+                        <span className="text-xs font-medium">{cat.label}</span>
                       </Button>
                     ))}
                   </div>
@@ -1346,7 +1333,7 @@ export default function DespesasPage() {
       </Dialog>
 
       {/* ============================================ */}
-      {/* MODAL: PREVIEW DAS DESPESAS IMPORTADAS */}
+      {/* MODAL: PREVIEW DAS DESPESAS IMPORTADAS       */}
       {/* ============================================ */}
       <Dialog open={showParsedModal} onOpenChange={setShowParsedModal}>
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1413,11 +1400,11 @@ export default function DespesasPage() {
                         <Badge 
                           variant="outline"
                           style={{ 
-                            backgroundColor: `${EXPENSE_CATEGORY_COLORS[expense.detectedCategory || importCategory]}20`,
-                            color: EXPENSE_CATEGORY_COLORS[expense.detectedCategory || importCategory],
+                            backgroundColor: `${EXPENSE_CATEGORY_COLORS[expense.detectedCategory || importCategory] || '#6B7280'}20`,
+                            color: EXPENSE_CATEGORY_COLORS[expense.detectedCategory || importCategory] || '#6B7280',
                           }}
                         >
-                          {EXPENSE_CATEGORY_LABELS[expense.detectedCategory || importCategory]}
+                          {EXPENSE_CATEGORY_LABELS[expense.detectedCategory || importCategory] || 'Outros'}
                         </Badge>
                       </TableCell>
                       <TableCell>{formatDate(expense.paymentDate)}</TableCell>
@@ -1471,7 +1458,7 @@ export default function DespesasPage() {
       </Dialog>
 
       {/* ============================================ */}
-      {/* DIALOG: CONFIRMAR EXCLUSÃO INDIVIDUAL */}
+      {/* DIALOG: CONFIRMAR EXCLUSÃO INDIVIDUAL        */}
       {/* ============================================ */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
@@ -1499,7 +1486,7 @@ export default function DespesasPage() {
       </AlertDialog>
 
       {/* ============================================ */}
-      {/* ✅ DIALOG: CONFIRMAR EXCLUSÃO EM MASSA */}
+      {/* DIALOG: CONFIRMAR EXCLUSÃO EM MASSA          */}
       {/* ============================================ */}
       <AlertDialog open={showDeleteAllConfirm} onOpenChange={setShowDeleteAllConfirm}>
         <AlertDialogContent>

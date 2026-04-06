@@ -1,7 +1,7 @@
 // lib/constants.ts
 
 // ===========================================
-// OPÇÕES DE TIPO DE EVENTO (ATUALIZADO)
+// OPÇÕES DE TIPO DE EVENTO
 // ===========================================
 
 export const EVENT_TYPE_OPTIONS = [
@@ -15,7 +15,7 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
 }
 
 // ===========================================
-// OPÇÕES DE CATEGORIA DE EVENTO (NOVO)
+// OPÇÕES DE CATEGORIA DE EVENTO
 // ===========================================
 
 export const EVENT_CATEGORY_OPTIONS = [
@@ -41,30 +41,29 @@ export const EVENT_CATEGORY_LABELS: Record<string, string> = {
 }
 
 // ===========================================
-// OPÇÕES DE STATUS DE RESERVA - ATUALIZADO v2.1
+// OPÇÕES DE STATUS DE RESERVA - v2.1
 // ===========================================
 
 export const RESERVATION_STATUS_OPTIONS = [
   { value: 'PRE_RESERVA', label: 'Pré-Reserva' },
-  { value: 'RESERVA_EM_ANDAMENTO', label: 'Reserva em Andamento' },  // ✅ NOVO
+  { value: 'RESERVA_EM_ANDAMENTO', label: 'Reserva em Andamento' },
   { value: 'RESERVA_CONFIRMADA', label: 'Reserva Confirmada' },
 ] as const
 
 export const RESERVATION_STATUS_LABELS: Record<string, string> = {
   PRE_RESERVA: 'Pré-Reserva',
-  RESERVA_EM_ANDAMENTO: 'Reserva em Andamento',  // ✅ NOVO
+  RESERVA_EM_ANDAMENTO: 'Reserva em Andamento',
   RESERVA_CONFIRMADA: 'Reserva Confirmada',
 }
 
-// ✅ NOVO: Cores por status de reserva
 export const RESERVATION_STATUS_COLORS: Record<string, string> = {
-  PRE_RESERVA: '#9CA3AF',           // Cinza
-  RESERVA_EM_ANDAMENTO: '#F59E0B',  // Âmbar/Laranja
-  RESERVA_CONFIRMADA: '#22C55E',    // Verde
+  PRE_RESERVA: '#9CA3AF',
+  RESERVA_EM_ANDAMENTO: '#F59E0B',
+  RESERVA_CONFIRMADA: '#22C55E',
 }
 
 // ===========================================
-// OPÇÕES DE STATUS DE PAGAMENTO (NOVO)
+// OPÇÕES DE STATUS DE PAGAMENTO
 // ===========================================
 
 export const PAYMENT_STATUS_OPTIONS = [
@@ -78,86 +77,47 @@ export const PAYMENT_STATUS_LABELS: Record<string, string> = {
 }
 
 // ===========================================
-// OPÇÕES DE CATEGORIA DE DESPESA (NOVO)
+// ✅ CATEGORIAS DE DESPESAS - v2.2 (APENAS 3)
 // ===========================================
-
-// lib/constants.ts
-
-// ... outras constantes existentes ...
-
-// ============================================
-// CATEGORIAS DE DESPESAS (ATUALIZADAS)
-// ============================================
 
 export const EXPENSE_CATEGORY_OPTIONS = [
   { value: 'COMISSAO', label: 'Comissão' },
   { value: 'MAO_DE_OBRA', label: 'Mão de Obra' },
   { value: 'MANUTENCAO', label: 'Manutenção' },
-  { value: 'ENERGIA', label: 'Energia Elétrica' },
-  { value: 'AGUA', label: 'Água' },
-  { value: 'INTERNET', label: 'Internet/Telefone' },
-  { value: 'LIMPEZA', label: 'Limpeza' },
-  { value: 'SEGURANCA', label: 'Segurança' },
-  { value: 'EQUIPAMENTOS', label: 'Equipamentos' },
-  { value: 'MARKETING', label: 'Marketing' },
-  { value: 'OUTROS', label: 'Outros' },
-] as const;
+] as const
 
 export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   COMISSAO: 'Comissão',
   MAO_DE_OBRA: 'Mão de Obra',
   MANUTENCAO: 'Manutenção',
-  ENERGIA: 'Energia Elétrica',
-  AGUA: 'Água',
-  INTERNET: 'Internet/Telefone',
-  LIMPEZA: 'Limpeza',
-  SEGURANCA: 'Segurança',
-  EQUIPAMENTOS: 'Equipamentos',
-  MARKETING: 'Marketing',
-  OUTROS: 'Outros',
-};
-
-export const EXPENSE_CATEGORY_COLORS: Record<string, string> = {
-  ALUGUEL: '#EF4444',
-  ENERGIA: '#F59E0B',
-  AGUA: '#3B82F6',
-  INTERNET: '#8B5CF6',
-  TELEFONE: '#EC4899',
-  MANUTENCAO: '#F97316',
-  LIMPEZA: '#10B981',
-  SEGURANCA: '#6366F1',
-  MARKETING: '#14B8A6',
-  PESSOAL: '#EAB308',
-  EQUIPAMENTOS: '#A855F7',
-  ALIMENTACAO: '#22C55E',
-  TRANSPORTE: '#0EA5E9',
-  IMPOSTOS: '#DC2626',
-  SEGUROS: '#7C3AED',
-  OUTROS: '#6B7280',
 }
 
-// Categorias principais (as 3 que você pediu)
+export const EXPENSE_CATEGORY_COLORS: Record<string, string> = {
+  COMISSAO: '#F59E0B',     // Âmbar/Dourado — 💰
+  MAO_DE_OBRA: '#3B82F6',  // Azul — 👷
+  MANUTENCAO: '#F97316',   // Laranja — 🔧
+}
+
+// Atalhos com ícone (usados nos botões do formulário)
 export const MAIN_EXPENSE_CATEGORIES = [
   { value: 'COMISSAO', label: 'Comissão', icon: '💰' },
   { value: 'MAO_DE_OBRA', label: 'Mão de Obra', icon: '👷' },
   { value: 'MANUTENCAO', label: 'Manutenção', icon: '🔧' },
-] as const;
-
-
+] as const
 
 // ===========================================
-// CORES POR CATEGORIA (NOVO)
+// CORES POR CATEGORIA DE EVENTO
 // ===========================================
 
 export const CATEGORY_COLORS: Record<string, string> = {
-  STAND_UP: '#8B5CF6',      // Roxo
-  TEATRAL: '#EC4899',       // Rosa
-  MUSICAL: '#F59E0B',       // Âmbar
-  FORMATURA: '#10B981',     // Verde
-  EMPRESARIAL: '#3B82F6',   // Azul
-  FEIRAS: '#6366F1',        // Índigo
-  CONGRESSO: '#14B8A6',     // Teal
-  OUTROS: '#6B7280',        // Cinza
+  STAND_UP: '#8B5CF6',
+  TEATRAL: '#EC4899',
+  MUSICAL: '#F59E0B',
+  FORMATURA: '#10B981',
+  EMPRESARIAL: '#3B82F6',
+  FEIRAS: '#6366F1',
+  CONGRESSO: '#14B8A6',
+  OUTROS: '#6B7280',
 }
 
 // ===========================================

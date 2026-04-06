@@ -1,15 +1,13 @@
 // lib/types.ts
 
 // ===========================================
-// TIPOS ATUALIZADOS v2.1
+// TIPOS ATUALIZADOS v2.2
 // ===========================================
 
 export type UserRole = 'ADMIN' | 'EDITOR' | 'VISUALIZADOR'
 
-// ✅ ATUALIZADO: Novos tipos de evento
 export type EventType = 'CEV_502' | 'FPP_501'
 
-// ✅ NOVO: Categoria de evento
 export type EventCategory = 
   | 'STAND_UP'
   | 'TEATRAL'
@@ -20,30 +18,12 @@ export type EventCategory =
   | 'CONGRESSO'
   | 'OUTROS'
 
-// ✅ ATUALIZADO v2.1: Removido SEM_RESERVA, Adicionado RESERVA_EM_ANDAMENTO
 export type ReservationStatus = 'PRE_RESERVA' | 'RESERVA_EM_ANDAMENTO' | 'RESERVA_CONFIRMADA'
 
-// ✅ NOVO: Status de pagamento
 export type PaymentStatus = 'PAGO' | 'NAO_PAGO'
 
-// ✅ NOVO: Categoria de despesa
-export type ExpenseCategory =
-  | 'ALUGUEL'
-  | 'ENERGIA'
-  | 'AGUA'
-  | 'INTERNET'
-  | 'TELEFONE'
-  | 'MANUTENCAO'
-  | 'LIMPEZA'
-  | 'SEGURANCA'
-  | 'MARKETING'
-  | 'PESSOAL'
-  | 'EQUIPAMENTOS'
-  | 'ALIMENTACAO'
-  | 'TRANSPORTE'
-  | 'IMPOSTOS'
-  | 'SEGUROS'
-  | 'OUTROS'
+// ✅ ATUALIZADO v2.2: Apenas 3 categorias de despesa
+export type ExpenseCategory = 'COMISSAO' | 'MAO_DE_OBRA' | 'MANUTENCAO'
 
 export type AlertType = 'VENCIMENTO_10_DIAS' | 'VENCIMENTO_EXPIRADO' | 'LEMBRETE_EVENTO'
 export type AlertStatus = 'PENDING' | 'SENT' | 'FAILED'
@@ -66,7 +46,6 @@ export interface UserProfile {
   updated_at: string
 }
 
-// ✅ ATUALIZADO: Interface de Evento
 export interface Event {
   id: string
   name: string
@@ -81,11 +60,9 @@ export interface Event {
   created_by: string | null
   created_at: string
   updated_at: string
-  // Relacionamentos (quando carregados)
   installments?: ContractInstallment[]
 }
 
-// ✅ NOVO: Interface de Parcela
 export interface ContractInstallment {
   id: string
   event_id: string
@@ -100,7 +77,7 @@ export interface ContractInstallment {
   updated_at: string
 }
 
-// ✅ NOVO: Interface de Despesa
+// ✅ ATUALIZADO v2.2: Interface de Despesa simplificada
 export interface Expense {
   id: string
   description: string
@@ -114,11 +91,13 @@ export interface Expense {
   created_by: string | null
   created_at: string
   updated_at: string
-  // Relacionamento (quando carregado)
+  // Campos extras do módulo de despesas
+  title?: string | null
+  client?: string | null
+  payment_date?: string | null
   event?: Event
 }
 
-// ✅ NOVO: Interface para formulário de parcela
 export interface InstallmentFormData {
   id?: string
   installment_number: number
@@ -128,7 +107,6 @@ export interface InstallmentFormData {
   notes?: string
 }
 
-// ✅ NOVO: Interface para formulário de evento
 export interface EventFormData {
   name: string
   event_date: string
@@ -178,21 +156,21 @@ export interface AuthUser {
 }
 
 // ===========================================
-// CORES PADRÃO - ATUALIZADO v2.1
+// CORES PADRÃO - v2.1
 // ===========================================
 
 export interface ColorScheme {
   reserva_com_contrato: string
   reserva_paga: string
   pre_reserva: string
-  reserva_em_andamento: string  // ✅ NOVO: Substituiu sem_reserva
+  reserva_em_andamento: string
 }
 
 export const DEFAULT_COLORS: ColorScheme = {
-  reserva_com_contrato: '#22C55E',    // Verde - Contrato assinado
-  reserva_paga: '#3B82F6',            // Azul - Pago
-  pre_reserva: '#9CA3AF',             // Cinza - Pré-reserva
-  reserva_em_andamento: '#F59E0B',    // ✅ NOVO: Âmbar/Laranja - Em andamento
+  reserva_com_contrato: '#22C55E',
+  reserva_paga: '#3B82F6',
+  pre_reserva: '#9CA3AF',
+  reserva_em_andamento: '#F59E0B',
 }
 
 // ===========================================

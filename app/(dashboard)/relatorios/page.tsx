@@ -1,3 +1,4 @@
+// app/(dashboard)/relatorios/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -23,7 +24,8 @@ import {
   Users,
   Receipt,
   PieChart,
-  Wallet
+  Wallet,
+  Eye,
 } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, startOfQuarter, endOfQuarter } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -36,6 +38,10 @@ import {
   formatCurrency,
 } from '@/lib/constants'
 
+// ============================================
+// INTERFACES
+// ============================================
+
 interface Stats {
   totalEvents: number
   cevEvents: number
@@ -43,11 +49,11 @@ interface Stats {
   cevRevenue: number
   fppRevenue: number
   withContract: number
-  totalRevenue: number      // Total contratado
-  totalPaid: number         // Total recebido
-  totalPending: number      // Total pendente
+  totalRevenue: number
+  totalPaid: number
+  totalPending: number
   totalExpenses: number
-  netResult: number         // Receita recebida - Despesas
+  netResult: number
   totalAudience: number
   preReserva: number
   emAndamento: number
@@ -74,10 +80,19 @@ interface ExpenseCategoryData {
   percentage: number
 }
 
+// ✅ NOVO: Tipos de visualização
+type ViewMode = 'TODOS' | 'ACONTECIDOS' | 'RECEBIDOS'
+
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
+
 export default function RelatoriosPage() {
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('year')
   const [filterType, setFilterType] = useState('all')
+  // ✅ NOVO: Estado do filtro de visualização
+  const [viewMode, setViewMode] = useState<ViewMode>('TODOS')
   const [stats, setStats] = useState<Stats>({
     totalEvents: 0,
     cevEvents: 0,
@@ -101,6 +116,10 @@ export default function RelatoriosPage() {
 
   const supabase = createClient()
 
+  // ============================================
+  // CARREGAR DADOS
+  // ============================================
+
   const loadData = async () => {
     setLoading(true)
     try {
@@ -123,7 +142,7 @@ export default function RelatoriosPage() {
           endDate = endOfYear(now)
       }
 
-      // Carregar eventos
+      // ── Carregar eventos do período ──
       let eventsQuery = supabase
         .from('events')
         .select('*')
@@ -135,28 +154,27 @@ export default function RelatoriosPage() {
       }
 
       const { data: events, error: eventsError } = await eventsQuery
-
       if (eventsError) throw eventsError
 
-      const eventList = events || []
-      const eventIds = eventList.map(e => e.id)
+      const allEvents = events || []
+      const allEventIds = allEvents.map(e => e.id)
 
-      // Carregar parcelas dos eventos
-      let installments: any[] = []
-      if (eventIds.length > 0) {
+      // ── Carregar TODAS as parcelas dos eventos do período ──
+      let allInstallments: any[] = []
+      if (allEventIds.length > 0) {
         const { data: installmentsData, error: installmentsError } = await supabase
           .from('contract_installments')
           .select('*')
-          .in('event_id', eventIds)
+          .in('event_id', allEventIds)
 
         if (installmentsError) {
           console.error('Erro ao carregar parcelas:', installmentsError)
         } else {
-          installments = installmentsData || []
+          allInstallments = installmentsData || []
         }
       }
 
-      // Carregar despesas
+      // ── Carregar despesas ──
       const { data: expenses, error: expensesError } = await supabase
         .from('expenses')
         .select('*')
@@ -169,63 +187,101 @@ export default function RelatoriosPage() {
 
       const expenseList = expenses || []
 
-      // ✅ CORRIGIDO: Calcular estatísticas
-      const totalRevenue = installments.reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0)
-      const totalPaid = installments
+      // =============================================
+      // ✅ NOVO: Aplicar filtro de viewMode
+      // =============================================
+
+      const todayStr = format(now, 'yyyy-MM-dd')
+
+      let filteredEvents = allEvents
+      let filteredInstallments = allInstallments
+
+      switch (viewMode) {
+        case 'ACONTECIDOS':
+          // Apenas eventos com event_date <= hoje
+          filteredEvents = allEvents.filter(e => e.event_date <= todayStr)
+          // Parcelas apenas dos eventos filtrados
+          const acontecidosIds = new Set(filteredEvents.map(e => e.id))
+          filteredInstallments = allInstallments.filter(inst => acontecidosIds.has(inst.event_id))
+          break
+
+        case 'RECEBIDOS':
+          // Eventos que têm pelo menos 1 parcela PAGA
+          const eventIdsWithPayment = new Set(
+            allInstallments
+              .filter(inst => inst.payment_status === 'PAGO')
+              .map(inst => inst.event_id)
+          )
+          filteredEvents = allEvents.filter(e => eventIdsWithPayment.has(e.id))
+          // Parcelas apenas dos eventos filtrados
+          const recebidosIds = new Set(filteredEvents.map(e => e.id))
+          filteredInstallments = allInstallments.filter(inst => recebidosIds.has(inst.event_id))
+          break
+
+        case 'TODOS':
+        default:
+          // Sem filtro adicional
+          break
+      }
+
+      // =============================================
+      // Calcular estatísticas com dados filtrados
+      // =============================================
+
+      const totalRevenue = filteredInstallments.reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0)
+      const totalPaid = filteredInstallments
         .filter(inst => inst.payment_status === 'PAGO')
         .reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0)
       const totalPending = totalRevenue - totalPaid
       const totalExpenses = expenseList.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0)
-
-      // ✅ CORRIGIDO: Resultado líquido = Receita RECEBIDA - Despesas
       const netResult = totalPaid - totalExpenses
 
-      // Calcular receita por tipo de evento
-      const cevRevenue = eventList
+      // Receita por tipo de evento
+      const cevRevenue = filteredEvents
         .filter(e => e.event_type === 'CEV_502')
         .reduce((sum, event) => {
-          const eventRevenue = installments
+          const eventRevenue = filteredInstallments
             .filter(inst => inst.event_id === event.id && inst.payment_status === 'PAGO')
             .reduce((s, inst) => s + parseFloat(inst.amount || 0), 0)
           return sum + eventRevenue
         }, 0)
 
-      const fppRevenue = eventList
+      const fppRevenue = filteredEvents
         .filter(e => e.event_type === 'FPP_501')
         .reduce((sum, event) => {
-          const eventRevenue = installments
+          const eventRevenue = filteredInstallments
             .filter(inst => inst.event_id === event.id && inst.payment_status === 'PAGO')
             .reduce((s, inst) => s + parseFloat(inst.amount || 0), 0)
           return sum + eventRevenue
         }, 0)
 
       const newStats: Stats = {
-        totalEvents: eventList.length,
-        cevEvents: eventList.filter(e => e.event_type === 'CEV_502').length,
-        fppEvents: eventList.filter(e => e.event_type === 'FPP_501').length,
+        totalEvents: filteredEvents.length,
+        cevEvents: filteredEvents.filter(e => e.event_type === 'CEV_502').length,
+        fppEvents: filteredEvents.filter(e => e.event_type === 'FPP_501').length,
         cevRevenue,
         fppRevenue,
-        withContract: eventList.filter(e => e.has_contract).length,
+        withContract: filteredEvents.filter(e => e.has_contract).length,
         totalRevenue,
         totalPaid,
         totalPending,
         totalExpenses,
         netResult,
-        totalAudience: eventList.reduce((sum, e) => sum + (e.estimated_audience || 0), 0),
-        preReserva: eventList.filter(e => e.reservation_status === 'PRE_RESERVA').length,
-        emAndamento: eventList.filter(e => e.reservation_status === 'RESERVA_EM_ANDAMENTO').length,
-        confirmada: eventList.filter(e => e.reservation_status === 'RESERVA_CONFIRMADA').length
+        totalAudience: filteredEvents.reduce((sum, e) => sum + (e.estimated_audience || 0), 0),
+        preReserva: filteredEvents.filter(e => e.reservation_status === 'PRE_RESERVA').length,
+        emAndamento: filteredEvents.filter(e => e.reservation_status === 'RESERVA_EM_ANDAMENTO').length,
+        confirmada: filteredEvents.filter(e => e.reservation_status === 'RESERVA_CONFIRMADA').length
       }
       setStats(newStats)
 
-      // Calcular dados por categoria de evento
+      // ── Dados por categoria de evento ──
       const categoryMap = new Map<string, { count: number; revenue: number }>()
       
-      eventList.forEach(event => {
+      filteredEvents.forEach(event => {
         const cat = event.event_category || 'OUTROS'
         const current = categoryMap.get(cat) || { count: 0, revenue: 0 }
         
-        const eventRevenue = installments
+        const eventRevenue = filteredInstallments
           .filter(inst => inst.event_id === event.id && inst.payment_status === 'PAGO')
           .reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0)
         
@@ -246,14 +302,14 @@ export default function RelatoriosPage() {
 
       setCategoryData(categoryArray)
 
-      // Calcular dados mensais
+      // ── Dados mensais ──
       const monthMap = new Map<string, { events: number; revenue: number; expenses: number }>()
       
-      eventList.forEach(event => {
+      filteredEvents.forEach(event => {
         const month = format(new Date(event.event_date), 'yyyy-MM')
         const current = monthMap.get(month) || { events: 0, revenue: 0, expenses: 0 }
         
-        const eventRevenue = installments
+        const eventRevenue = filteredInstallments
           .filter(inst => inst.event_id === event.id && inst.payment_status === 'PAGO')
           .reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0)
         
@@ -279,7 +335,7 @@ export default function RelatoriosPage() {
       
       setMonthlyData(monthlyArray)
 
-      // Calcular despesas por categoria
+      // ── Despesas por categoria ──
       const expenseCategoryMap = new Map<string, number>()
       expenseList.forEach(expense => {
         const cat = expense.category || 'OUTROS'
@@ -304,9 +360,14 @@ export default function RelatoriosPage() {
     }
   }
 
+  // ✅ ATUALIZADO: Incluir viewMode na dependência
   useEffect(() => {
     loadData()
-  }, [period, filterType])
+  }, [period, filterType, viewMode])
+
+  // ============================================
+  // FUNÇÕES AUXILIARES
+  // ============================================
 
   const formatMonthLabel = (monthStr: string) => {
     try {
@@ -327,9 +388,31 @@ export default function RelatoriosPage() {
     }
   }
 
+  // ✅ NOVO: Label do viewMode
+  const getViewModeLabel = () => {
+    switch (viewMode) {
+      case 'ACONTECIDOS': return 'Acontecidos'
+      case 'RECEBIDOS': return 'Recebidos'
+      default: return 'Todos'
+    }
+  }
+
+  // ✅ NOVO: Descrição contextual
+  const getViewModeDescription = () => {
+    switch (viewMode) {
+      case 'ACONTECIDOS': return 'Exibindo apenas eventos que já ocorreram'
+      case 'RECEBIDOS': return 'Exibindo apenas eventos com pagamentos recebidos'
+      default: return 'Análise e estatísticas dos eventos'
+    }
+  }
+
   const paymentRate = stats.totalRevenue > 0 
     ? ((stats.totalPaid / stats.totalRevenue) * 100).toFixed(1) 
     : '0'
+
+  // ============================================
+  // RENDER
+  // ============================================
 
   return (
     <div className="space-y-6">
@@ -338,10 +421,38 @@ export default function RelatoriosPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
           <p className="text-gray-500">
-            Análise e estatísticas dos eventos
+            {getViewModeDescription()}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {/* ✅ NOVO: Filtro de Visualização */}
+          <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+            <SelectTrigger className="w-40">
+              <Eye className="h-4 w-4 mr-2 text-gray-400" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODOS">
+                <div className="flex flex-col">
+                  <span>Todos</span>
+                  <span className="text-xs text-gray-400">Todos os eventos</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="ACONTECIDOS">
+                <div className="flex flex-col">
+                  <span>Acontecidos</span>
+                  <span className="text-xs text-gray-400">Já ocorreram</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="RECEBIDOS">
+                <div className="flex flex-col">
+                  <span>Recebidos</span>
+                  <span className="text-xs text-gray-400">Com pagamentos</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select value={filterType} onValueChange={setFilterType}>
             <SelectTrigger className="w-36">
               <SelectValue />
@@ -352,6 +463,7 @@ export default function RelatoriosPage() {
               <SelectItem value="FPP_501">FPP – 501</SelectItem>
             </SelectContent>
           </Select>
+
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-36">
               <SelectValue />
@@ -365,13 +477,31 @@ export default function RelatoriosPage() {
         </div>
       </div>
 
+      {/* ✅ NOVO: Badge indicando filtro ativo */}
+      {viewMode !== 'TODOS' && (
+        <div className="flex items-center gap-2">
+          <Badge 
+            variant="outline" 
+            className={`px-3 py-1 text-sm ${
+              viewMode === 'ACONTECIDOS' 
+                ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                : 'bg-green-50 text-green-700 border-green-200'
+            }`}
+          >
+            <Eye className="h-3 w-3 mr-1" />
+            Filtro: {getViewModeLabel()}
+            {viewMode === 'ACONTECIDOS' && ` (eventos até ${format(new Date(), 'dd/MM/yyyy')})`}
+          </Badge>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
       ) : (
         <>
-          {/* ✅ CORRIGIDO: Cards de Estatísticas Principais */}
+          {/* Cards de Estatísticas Principais */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -382,11 +512,13 @@ export default function RelatoriosPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">{stats.totalEvents}</div>
-                <p className="text-xs text-gray-500 mt-1">{getPeriodLabel()}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {getPeriodLabel()}
+                  {viewMode !== 'TODOS' && ` · ${getViewModeLabel()}`}
+                </p>
               </CardContent>
             </Card>
 
-            {/* ✅ CORRIGIDO: Receita Total mostra valor recebido + pendente */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-500">
@@ -421,31 +553,30 @@ export default function RelatoriosPage() {
               </CardContent>
             </Card>
 
-            {/* ✅ CORRIGIDO: Resultado Líquido = Receita Recebida - Despesas */}
-            {/* ✅ CORRIGIDO: Resultado Líquido igual Receita Total */}
-<Card className={stats.netResult >= 0 ? 'border-green-200' : 'border-red-200'}>
-  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-    <CardTitle className="text-sm font-medium text-gray-500">
-      Resultado Líquido
-    </CardTitle>
-    {stats.netResult >= 0 ? (
-      <TrendingUp className="h-4 w-4 text-green-600" />
-    ) : (
-      <TrendingDown className="h-4 w-4 text-red-600" />
-    )}
-  </CardHeader>
-  <CardContent>
-    <div className={`text-lg sm:text-xl font-bold ${stats.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-      {formatCurrency(stats.totalPaid)}
-    </div>
-    <p className="text-xs text-gray-500 mt-1">
-      {formatCurrency(stats.totalPending)} pendente
-    </p>
-    <p className="text-xs text-gray-400">
-      Receita - Despesas
-    </p>
-  </CardContent>
-</Card>
+            {/* ✅ BUG FIX: Agora mostra netResult corretamente */}
+            <Card className={stats.netResult >= 0 ? 'border-green-200' : 'border-red-200'}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-500">
+                  Resultado Líquido
+                </CardTitle>
+                {stats.netResult >= 0 ? (
+                  <TrendingUp className="h-4 w-4 text-green-600" />
+                ) : (
+                  <TrendingDown className="h-4 w-4 text-red-600" />
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className={`text-lg sm:text-xl font-bold ${stats.netResult >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(stats.netResult)}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formatCurrency(stats.totalPending)} pendente
+                </p>
+                <p className="text-xs text-gray-400">
+                  Receita Recebida - Despesas
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Cards Secundários */}
@@ -697,7 +828,7 @@ export default function RelatoriosPage() {
             </Card>
           </div>
 
-          {/* ✅ CORRIGIDO: Valor Pago por Categoria de Evento */}
+          {/* Valor Pago por Categoria de Evento */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -802,7 +933,7 @@ export default function RelatoriosPage() {
             </Card>
           )}
 
-          {/* ✅ CORRIGIDO: Lucro Mensal */}
+          {/* Resultado Mensal */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -877,6 +1008,7 @@ export default function RelatoriosPage() {
               </CardTitle>
               <CardDescription>
                 Demonstração do Resultado - {getPeriodLabel()}
+                {viewMode !== 'TODOS' && ` · ${getViewModeLabel()}`}
               </CardDescription>
             </CardHeader>
             <CardContent>
