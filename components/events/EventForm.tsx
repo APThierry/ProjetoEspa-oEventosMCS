@@ -1,6 +1,7 @@
+// components/events/EventForm.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { format } from 'date-fns'
@@ -42,7 +43,6 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>
 
-// Interface do evento
 interface EventData {
   id: string
   name: string
@@ -69,7 +69,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
   const [hasContract, setHasContract] = useState(event?.has_contract ?? false)
   const [eventType, setEventType] = useState(event?.event_type ?? 'CEV_502')
   const [eventCategory, setEventCategory] = useState(event?.event_category ?? 'OUTROS')
-  // ✅ ATUALIZADO: Default agora é PRE_RESERVA
   const [reservationStatus, setReservationStatus] = useState(event?.reservation_status ?? 'PRE_RESERVA')
   const [estimatedAudience, setEstimatedAudience] = useState<string>(
     event?.estimated_audience?.toString() ?? ''
@@ -92,7 +91,6 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
       event_date: event?.event_date ?? format(date, 'yyyy-MM-dd'),
       event_type: event?.event_type ?? 'CEV_502',
       event_category: event?.event_category ?? 'OUTROS',
-      // ✅ ATUALIZADO: Default agora é PRE_RESERVA
       reservation_status: event?.reservation_status ?? 'PRE_RESERVA',
       has_contract: event?.has_contract ?? false,
       estimated_audience: event?.estimated_audience ?? null,
@@ -101,48 +99,48 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
   })
 
   // Carregar parcelas existentes ao editar
-  useEffect(() => {
-    const loadInstallments = async () => {
-      if (!event?.id) return
-      
-      setLoadingInstallments(true)
-      try {
-        const { data, error } = await supabase
-          .from('contract_installments')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('installment_number', { ascending: true })
+  const loadInstallments = useCallback(async () => {
+    if (!event?.id) return
+    
+    setLoadingInstallments(true)
+    try {
+      const { data, error } = await supabase
+        .from('contract_installments')
+        .select('*')
+        .eq('event_id', event.id)
+        .order('installment_number', { ascending: true })
 
-        if (error) throw error
+      if (error) throw error
 
-        if (data && data.length > 0) {
-          setInstallments(data.map(inst => ({
-            id: inst.id,
-            installment_number: inst.installment_number,
-            amount: parseFloat(inst.amount) || 0,
-            due_date: inst.due_date,
-            payment_status: inst.payment_status,
-            notes: inst.notes,
-          })))
-        } else if (event.has_contract) {
-          setInstallments([{
-            installment_number: 1,
-            amount: 0,
-            due_date: format(new Date(), 'yyyy-MM-dd'),
-            payment_status: 'NAO_PAGO',
-          }])
-        }
-      } catch (error) {
-        console.error('Erro ao carregar parcelas:', error)
-      } finally {
-        setLoadingInstallments(false)
+      if (data && data.length > 0) {
+        setInstallments(data.map(inst => ({
+          id: inst.id,
+          installment_number: inst.installment_number,
+          amount: parseFloat(inst.amount) || 0,
+          due_date: inst.due_date,
+          payment_status: inst.payment_status,
+          notes: inst.notes,
+        })))
+      } else if (event.has_contract) {
+        setInstallments([{
+          installment_number: 1,
+          amount: 0,
+          due_date: format(new Date(), 'yyyy-MM-dd'),
+          payment_status: 'NAO_PAGO',
+        }])
       }
+    } catch (error) {
+      console.error('Erro ao carregar parcelas:', error)
+    } finally {
+      setLoadingInstallments(false)
     }
+  }, [event?.id, event?.has_contract])
 
+  useEffect(() => {
     if (event?.has_contract) {
       loadInstallments()
     }
-  }, [event?.id, event?.has_contract, supabase])
+  }, [event?.has_contract, loadInstallments])
 
   useEffect(() => {
     if (hasContract && installments.length === 0) {
@@ -155,10 +153,79 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
     }
   }, [hasContract, installments.length])
 
+  // =============================================
+  // ✅ FIX 1: Verificar autenticação + refresh
+  // =============================================
+
+  const getAuthenticatedUser = async () => {
+    // Tentar obter o usuário
+    const { data: { user }, error } = await supabase.auth.getUser()
+    
+    if (user) return user
+
+    // Se falhou, tentar refresh do token
+    console.warn('⚠️ Sessão não encontrada, tentando refresh...')
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+    
+    if (refreshError) {
+      console.error('❌ Refresh falhou:', refreshError)
+      return null
+    }
+
+    return refreshData?.user || null
+  }
+
+  // =============================================
+  // ✅ FIX 2: onInvalid — mostra erro quando validação falha
+  // =============================================
+
+  const onInvalid = (validationErrors: any) => {
+    console.error('❌ Validação do formulário falhou:', validationErrors)
+    
+    // Montar mensagem com os campos que falharam
+    const fieldNames: Record<string, string> = {
+      name: 'Nome do evento',
+      event_date: 'Data',
+      event_type: 'Tipo de evento',
+      event_category: 'Categoria',
+      reservation_status: 'Status de reserva',
+    }
+    
+    const failedFields = Object.keys(validationErrors)
+      .map(key => fieldNames[key] || key)
+      .join(', ')
+
+    toast({
+      title: 'Campos obrigatórios',
+      description: `Verifique: ${failedFields}`,
+      variant: 'destructive',
+    })
+  }
+
+  // =============================================
+  // ✅ FIX 3: onSubmit com auth check e created_by
+  // =============================================
+
   const onSubmit = async (data: FormValues) => {
     setLoading(true)
 
     try {
+      // ✅ FIX: Verificar autenticação ANTES de qualquer operação
+      const user = await getAuthenticatedUser()
+      
+      if (!user) {
+        toast({
+          title: 'Sessão expirada',
+          description: 'Sua sessão expirou. Recarregue a página e tente novamente.',
+          variant: 'destructive',
+        })
+        setLoading(false)
+        return
+      }
+
+      console.log('✅ Usuário autenticado:', user.id)
+
+      // Validar público estimado
       const audience = estimatedAudience ? parseInt(estimatedAudience, 10) : null
       if (estimatedAudience && (isNaN(audience!) || audience! < 0)) {
         toast({
@@ -170,6 +237,7 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
         return
       }
 
+      // Validar parcelas
       if (hasContract) {
         const invalidInstallments = installments.filter(
           inst => !inst.due_date || inst.amount < 0
@@ -185,6 +253,7 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
         }
       }
 
+      // ✅ FIX: Payload com created_by explícito
       const eventPayload = {
         name: data.name,
         event_date: data.event_date,
@@ -197,29 +266,58 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
       }
 
       let eventId = event?.id
-      let error = null
-
+      
       if (isEditing && event) {
-        const result = await supabase
+        // ── UPDATE ──
+        console.log('📝 Atualizando evento:', event.id, eventPayload)
+        
+        const { data: updatedEvent, error } = await supabase
           .from('events')
           .update(eventPayload)
           .eq('id', event.id)
-        error = result.error
-      } else {
-        const result = await supabase
-          .from('events')
-          .insert([eventPayload])
           .select('id')
           .single()
+
+        if (error) {
+          console.error('❌ Erro ao atualizar evento:', error)
+          throw new Error(error.message)
+        }
+
+        if (!updatedEvent) {
+          throw new Error('Evento não foi atualizado. Verifique suas permissões.')
+        }
         
-        error = result.error
-        eventId = result.data?.id
+        console.log('✅ Evento atualizado:', updatedEvent.id)
+
+      } else {
+        // ── INSERT ──
+        const insertPayload = {
+          ...eventPayload,
+          created_by: user.id,  // ✅ FIX: Sempre incluir o user ID
+        }
+
+        console.log('📝 Criando evento:', insertPayload)
+
+        const { data: newEvent, error } = await supabase
+          .from('events')
+          .insert([insertPayload])
+          .select('id')
+          .single()
+
+        if (error) {
+          console.error('❌ Erro ao criar evento:', error)
+          throw new Error(error.message)
+        }
+
+        if (!newEvent?.id) {
+          throw new Error('Evento não foi criado. Verifique suas permissões.')
+        }
+
+        eventId = newEvent.id
+        console.log('✅ Evento criado:', eventId)
       }
 
-      if (error) {
-        throw new Error(error.message)
-      }
-
+      // Salvar parcelas
       if (hasContract && eventId) {
         await saveInstallments(eventId)
       } else if (!hasContract && eventId && isEditing) {
@@ -238,11 +336,27 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
 
       router.refresh()
       onSuccess()
-    } catch (err) {
-      console.error('Erro:', err)
+
+    } catch (err: any) {
+      console.error('❌ Erro ao salvar evento:', err)
+      
+      // ✅ FIX: Mensagem de erro mais detalhada
+      const errorMessage = err?.message || 'Erro desconhecido'
+      
+      let description = 'Não foi possível salvar o evento.'
+      if (errorMessage.includes('row-level security')) {
+        description = 'Sem permissão. Verifique suas credenciais e tente novamente.'
+      } else if (errorMessage.includes('duplicate')) {
+        description = 'Já existe um evento com esses dados.'
+      } else if (errorMessage.includes('violates')) {
+        description = `Erro de validação: ${errorMessage}`
+      } else {
+        description = errorMessage
+      }
+
       toast({
-        title: 'Erro',
-        description: 'Não foi possível salvar o evento.',
+        title: 'Erro ao salvar',
+        description,
         variant: 'destructive',
       })
     } finally {
@@ -250,13 +364,19 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
     }
   }
 
+  // =============================================
+  // SALVAR PARCELAS
+  // =============================================
+
   const saveInstallments = async (eventId: string) => {
     try {
+      // Deletar parcelas existentes
       await supabase
         .from('contract_installments')
         .delete()
         .eq('event_id', eventId)
 
+      // Inserir novas parcelas
       const installmentsPayload = installments.map(inst => ({
         event_id: eventId,
         installment_number: inst.installment_number,
@@ -271,9 +391,11 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
         .insert(installmentsPayload)
 
       if (error) {
-        console.error('Erro ao salvar parcelas:', error)
+        console.error('❌ Erro ao salvar parcelas:', error)
         throw error
       }
+
+      console.log('✅ Parcelas salvas:', installmentsPayload.length)
     } catch (error) {
       console.error('Erro ao salvar parcelas:', error)
       toast({
@@ -284,8 +406,14 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
     }
   }
 
+  // =============================================
+  // RENDER
+  // =============================================
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    // ✅ FIX: Adicionado onInvalid para capturar erros de validação
+    <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
+      
       {/* Nome do evento */}
       <div className="space-y-2">
         <Label htmlFor="name">Nome do Evento *</Label>
@@ -294,6 +422,7 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
           placeholder="Ex: Show de Stand Up - João Silva"
           disabled={loading}
           {...register('name')}
+          className={errors.name ? 'border-red-500' : ''}
         />
         {errors.name && (
           <p className="text-sm text-red-500">{errors.name.message}</p>
@@ -309,6 +438,7 @@ export function EventForm({ date, event, onCancel, onSuccess }: EventFormProps) 
             type="date"
             disabled={loading}
             {...register('event_date')}
+            className={errors.event_date ? 'border-red-500' : ''}
           />
           {errors.event_date && (
             <p className="text-sm text-red-500">{errors.event_date.message}</p>
