@@ -1,6 +1,7 @@
+// app/(dashboard)/eventos/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,7 +29,6 @@ import {
   Search, 
   Calendar, 
   FileText, 
-  DollarSign, 
   Filter,
   Edit,
   Trash2,
@@ -64,7 +64,10 @@ import {
   RESERVATION_STATUS_LABELS,
 } from '@/lib/constants'
 
-// ✅ ATUALIZADO: Interface do evento
+// ============================================
+// INTERFACES
+// ============================================
+
 interface Event {
   id: string
   name: string
@@ -77,7 +80,6 @@ interface Event {
   observations: string | null
 }
 
-// ✅ NOVO: Interface para evento com dados de pagamento
 interface EventWithPayment extends Event {
   totalAmount: number
   paidAmount: number
@@ -86,6 +88,10 @@ interface EventWithPayment extends Event {
   installmentsCount: number
   paidInstallmentsCount: number
 }
+
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
 
 export default function EventosPage() {
   const [events, setEvents] = useState<EventWithPayment[]>([])
@@ -110,36 +116,12 @@ export default function EventosPage() {
   const canDelete = userRole === 'ADMIN' || userRole === 'EDITOR'
   const isViewer = userRole === 'VISUALIZADOR'
 
-  useEffect(() => {
-    const loadUserPermissions = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        if (user) {
-          const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('role')
-            .eq('user_id', user.id)
-            .single()
-          
-          setUserRole(profile?.role || 'VISUALIZADOR')
-        }
-      } catch (error) {
-        console.error('Erro ao carregar permissões:', error)
-        setUserRole('VISUALIZADOR')
-      } finally {
-        setLoadingPermissions(false)
-      }
-    }
-    
-    loadUserPermissions()
-  }, [supabase])
+  // ============================================
+  // ✅ FIX: Carregar eventos (sem setLoading aqui)
+  // ============================================
 
-  // ✅ ATUALIZADO: Carregar eventos com parcelas
-  const loadEvents = async () => {
-    setLoading(true)
+  const fetchEvents = useCallback(async () => {
     try {
-      // Carregar eventos
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
@@ -154,7 +136,6 @@ export default function EventosPage() {
         return
       }
 
-      // Carregar parcelas de todos os eventos
       const eventIds = eventList.map(e => e.id)
       const { data: installments } = await supabase
         .from('contract_installments')
@@ -163,7 +144,6 @@ export default function EventosPage() {
 
       const installmentList = installments || []
 
-      // Calcular status de pagamento para cada evento
       const eventsWithPayment: EventWithPayment[] = eventList.map(event => {
         const eventInstallments = installmentList.filter(i => i.event_id === event.id)
         const totalAmount = eventInstallments.reduce((sum, i) => sum + Number(i.amount), 0)
@@ -195,14 +175,75 @@ export default function EventosPage() {
         description: 'Não foi possível carregar os eventos.',
         variant: 'destructive',
       })
-    } finally {
-      setLoading(false)
     }
-  }
+  }, [supabase, toast])
+
+  // ============================================
+  // ✅ FIX: Carregar TUDO em paralelo
+  // ============================================
 
   useEffect(() => {
-    loadEvents()
-  }, [])
+    const loadAll = async () => {
+      setLoading(true)
+      setLoadingPermissions(true)
+
+      try {
+        // ✅ Permissões e eventos AO MESMO TEMPO
+        const [permResult] = await Promise.allSettled([
+          (async () => {
+            // Tentar obter user
+            let { data: { user } } = await supabase.auth.getUser()
+            
+            // Se falhou, refresh
+            if (!user) {
+              const { data } = await supabase.auth.refreshSession()
+              user = data?.user || null
+            }
+
+            if (user) {
+              const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('role')
+                .eq('user_id', user.id)
+                .single()
+              return profile?.role || 'VISUALIZADOR'
+            }
+            return 'VISUALIZADOR'
+          })(),
+          fetchEvents(),
+        ])
+
+        if (permResult.status === 'fulfilled') {
+          setUserRole(permResult.value)
+        } else {
+          console.error('Erro ao carregar permissões:', permResult.reason)
+          setUserRole('VISUALIZADOR')
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error)
+        setUserRole('VISUALIZADOR')
+      } finally {
+        setLoading(false)
+        setLoadingPermissions(false)
+      }
+    }
+
+    loadAll()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ============================================
+  // ✅ FIX: Função para recarregar só eventos
+  // ============================================
+
+  const reloadEvents = async () => {
+    setLoading(true)
+    await fetchEvents()
+    setLoading(false)
+  }
+
+  // ============================================
+  // HANDLERS
+  // ============================================
 
   const handleDelete = async () => {
     if (!deleteId) return
@@ -218,13 +259,11 @@ export default function EventosPage() {
 
     setDeleting(true)
     try {
-      // Deletar parcelas primeiro
       await supabase
         .from('contract_installments')
         .delete()
         .eq('event_id', deleteId)
 
-      // Depois deletar o evento
       const { error } = await supabase
         .from('events')
         .delete()
@@ -237,7 +276,7 @@ export default function EventosPage() {
         description: 'O evento foi removido com sucesso.',
       })
 
-      loadEvents()
+      reloadEvents()
     } catch (error) {
       toast({
         title: 'Erro',
@@ -274,12 +313,20 @@ export default function EventosPage() {
     setShowCreateModal(true)
   }
 
+  // ============================================
+  // FILTROS
+  // ============================================
+
   const filteredEvents = events.filter(event => {
     const matchesSearch = event.name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = filterType === 'all' || event.event_type === filterType
     const matchesStatus = filterStatus === 'all' || event.reservation_status === filterStatus
     return matchesSearch && matchesType && matchesStatus
   })
+
+  // ============================================
+  // HELPERS
+  // ============================================
 
   const formatDate = (dateStr: string) => {
     try {
@@ -289,7 +336,6 @@ export default function EventosPage() {
     }
   }
 
-  // ✅ ATUALIZADO: Cores de status
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'RESERVA_CONFIRMADA': return 'bg-green-100 text-green-800'
@@ -299,7 +345,6 @@ export default function EventosPage() {
     }
   }
 
-  // ✅ ATUALIZADO: Badge de pagamento baseado nas parcelas
   const getPaymentBadge = (event: EventWithPayment) => {
     if (!event.has_contract || event.installmentsCount === 0) {
       return <Badge variant="outline" className="text-gray-500">Sem contrato</Badge>
@@ -331,13 +376,21 @@ export default function EventosPage() {
     )
   }
 
-  if (loadingPermissions) {
+  // ============================================
+  // ✅ FIX: Loading — só bloqueia se AMBOS carregando
+  // ============================================
+
+  if (loading && loadingPermissions) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     )
   }
+
+  // ============================================
+  // RENDER
+  // ============================================
 
   return (
     <div className="space-y-6">
@@ -391,7 +444,6 @@ export default function EventosPage() {
                 className="pl-10"
               />
             </div>
-            {/* ✅ ATUALIZADO: Tipos de evento */}
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger>
                 <SelectValue placeholder="Tipo de evento" />
@@ -405,7 +457,6 @@ export default function EventosPage() {
                 ))}
               </SelectContent>
             </Select>
-            {/* ✅ ATUALIZADO: Status de reserva */}
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger>
                 <SelectValue placeholder="Status" />
@@ -551,7 +602,7 @@ export default function EventosPage() {
               onSuccess={() => {
                 setShowCreateModal(false)
                 setEditingEvent(null)
-                loadEvents()
+                reloadEvents()
               }}
             />
           </DialogContent>
