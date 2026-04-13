@@ -1,3 +1,4 @@
+// components/events/EventCard.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -36,7 +37,8 @@ import {
   Calendar,
   AlertCircle,
   CheckCircle2,
-  Clock
+  Clock,
+  Loader2,
 } from 'lucide-react'
 import {
   EVENT_TYPE_LABELS,
@@ -76,7 +78,8 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
   const [deleting, setDeleting] = useState(false)
   const [installmentInfo, setInstallmentInfo] = useState<InstallmentInfo | null>(null)
   
-  const { canEditEvent, canDeleteEvent } = usePermissions()
+  // ✅ FIX: Desestruturar loading das permissões
+  const { canEditEvent, canDeleteEvent, loading: loadingPermissions } = usePermissions()
   const { toast } = useToast()
   const router = useRouter()
   const supabase = createClient()
@@ -116,11 +119,17 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
     }
 
     loadInstallments()
-  }, [event.id, event.has_contract, supabase])
+  }, [event.id, event.has_contract])
 
   const handleDelete = async () => {
     setDeleting(true)
     try {
+      // ✅ Deletar parcelas primeiro
+      await supabase
+        .from('contract_installments')
+        .delete()
+        .eq('event_id', event.id)
+
       const { error } = await supabase
         .from('events')
         .delete()
@@ -164,13 +173,11 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
     }
   }
 
-  // Determinar status de pagamento baseado nas parcelas
   const getPaymentStatus = () => {
     if (!event.has_contract) {
-      return null // Não mostrar badge de pagamento
+      return null
     }
 
-    // Se temos info das parcelas, usar ela
     if (installmentInfo) {
       if (installmentInfo.total === 0) {
         return {
@@ -206,7 +213,6 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
       }
     }
 
-    // Fallback para o campo antigo is_paid (compatibilidade)
     if (event.is_paid) {
       return {
         label: 'Pago',
@@ -225,13 +231,16 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
   const paymentStatus = getPaymentStatus()
   const PaymentIcon = paymentStatus?.icon || FileText
 
-  // Verificar se tem parcela vencida (simplificado)
   const isOverdue = event.has_contract && 
     !event.is_paid && 
     installmentInfo && 
     installmentInfo.paid < installmentInfo.total &&
     event.contract_due_date && 
     new Date(event.contract_due_date) < new Date()
+
+  // ✅ FIX: Mostrar menu se tem permissão OU se ainda está carregando
+  // (durante loading, mostra o botão mas desabilita as ações)
+  const showActions = canEditEvent || canDeleteEvent || loadingPermissions
 
   return (
     <>
@@ -264,7 +273,6 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
                   {RESERVATION_STATUS_LABELS[event.reservation_status] || event.reservation_status}
                 </Badge>
                 
-                {/* Badge de pagamento - só mostra se tem contrato */}
                 {paymentStatus && (
                   <Badge className={`text-xs ${paymentStatus.color}`}>
                     <PaymentIcon className="h-3 w-3 mr-1" />
@@ -280,7 +288,7 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
                 </p>
               )}
 
-              {/* Info de vencimento (se pendente) */}
+              {/* Info de vencimento */}
               {event.has_contract && event.contract_due_date && installmentInfo && installmentInfo.paid < installmentInfo.total && (
                 <p className={`text-xs mt-2 ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
                   {isOverdue ? '⚠️ Vencido em ' : 'Vence em '}
@@ -296,31 +304,44 @@ export function EventCard({ event, onEdit, showDate = false }: EventCardProps) {
               )}
             </div>
 
-            {/* Menu de ações */}
-            {(canEditEvent || canDeleteEvent) && (
+            {/* ✅ FIX: Menu de ações — SEMPRE mostra se tem permissão OU loading */}
+            {showActions && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="shrink-0">
-                    <MoreVertical className="h-4 w-4" />
+                    {loadingPermissions ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    ) : (
+                      <MoreVertical className="h-4 w-4" />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {canEditEvent && (
-                    <DropdownMenuItem onClick={onEdit}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Editar
+                  {loadingPermissions ? (
+                    <DropdownMenuItem disabled>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Carregando...
                     </DropdownMenuItem>
-                  )}
-                  {canDeleteEvent && (
+                  ) : (
                     <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => setShowDeleteDialog(true)}
-                        className="text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir
-                      </DropdownMenuItem>
+                      {canEditEvent && (
+                        <DropdownMenuItem onClick={onEdit}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                      )}
+                      {canDeleteEvent && (
+                        <>
+                          {canEditEvent && <DropdownMenuSeparator />}
+                          <DropdownMenuItem
+                            onClick={() => setShowDeleteDialog(true)}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </>
                   )}
                 </DropdownMenuContent>

@@ -1,3 +1,4 @@
+// hooks/usePermissions.ts
 'use client'
 
 import { useUser } from './useUser'
